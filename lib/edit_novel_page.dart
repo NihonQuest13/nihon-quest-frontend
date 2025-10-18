@@ -7,17 +7,13 @@ import 'models.dart';
 import 'providers.dart';
 
 // --- LE MODÈLE PAR DÉFAUT EST MAINTENANT MISTRAL (Copie de create_novel_page.dart) ---
-const String _defaultModelId = 'mistralai/mistral-7b-instruct:free';
+const String _defaultModelId = 'tngtech/deepseek-r1t2-chimera:free';
 
 // --- LA LISTE DES ÉCRIVAINS EST MISE À JOUR POUR CORRESPONDRE (Copie de create_novel_page.dart) ---
 final Map<String, Map<String, String>> _writers = {
-  'mistralai/mistral-7b-instruct:free': {
-    'name': 'Mistral (Équilibré)',
+  'tngtech/deepseek-r1t2-chimera:free': {
+    'name': 'Deepseek (Par défaut)',
     'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
-  },
-  'qwen/qwen:7b-chat': {
-    'name': 'Qwen (Créatif)',
-    'description': 'Très imaginatif, idéal pour des idées originales.',
   },
 };
 
