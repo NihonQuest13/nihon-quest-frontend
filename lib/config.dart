@@ -21,4 +21,4 @@ final Map<String, Map<String, String>> kWritersMap = {
 
 const String kBaseUrl = kDebugMode
     ? 'http://127.0.0.1:8000'
-    : 'https://nihon-quest-backend.onrender.com';
+    : 'https://nihon-quest-api.onrender.com';
