@@ -3,16 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models.dart';
+import 'config.dart'; // ✅ AJOUT DE L'IMPORT
 
-// --- Default model and writers list, consistent with the rest of the app ---
-const String _defaultModelId = 'deepseek/deepseek-r1-0528:free';
-
-final Map<String, Map<String, String>> _writers = {
-  'deepseek/deepseek-r1-0528:free': {
-    'name': 'Deepseek (Par défaut)',
-    'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
-  },
-};
+// --- Les constantes locales sont SUPPRIMÉES ---
 
 // --- THIS IS THE NEW, CORRECT WIDGET ---
 class CreateNovelPage extends ConsumerStatefulWidget {
@@ -31,7 +24,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
   String _selectedLanguage = 'Japonais';
   late String _selectedLevel;
   String _selectedGenre = 'Fantasy';
-  String _selectedModelId = _defaultModelId;
+  String _selectedModelId = kDefaultModelId; // ✅ MODIFIÉ
 
   final Map<String, List<String>> _languageLevels = {
     'Anglais': ['A1 (Beginner)', 'A2 (Elementary)', 'B1 (Intermediate)', 'B2 (Advanced)', 'C1 (Proficient)', 'C2 (Mastery)', 'Native'],
@@ -114,7 +107,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 labelText: 'Écrivain',
                 prefixIcon: Icon(Icons.edit_note_rounded),
               ),
-              items: _writers.entries.map((entry) {
+              items: kWritersMap.entries.map((entry) { // ✅ MODIFIÉ
                 return DropdownMenuItem<String>(
                   value: entry.key,
                   child: Column(
@@ -136,7 +129,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 );
               }).toList(),
               selectedItemBuilder: (BuildContext context) {
-                return _writers.values.map<Widget>((item) {
+                return kWritersMap.values.map<Widget>((item) { // ✅ MODIFIÉ
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Text(item['name']!, overflow: TextOverflow.ellipsis),

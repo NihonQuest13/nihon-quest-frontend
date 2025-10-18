@@ -5,18 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models.dart';
 import 'providers.dart';
+import 'config.dart'; // ✅ AJOUT DE L'IMPORT
 
-// --- LE MODÈLE PAR DÉFAUT EST MAINTENANT MISTRAL (Copie de create_novel_page.dart) ---
-const String _defaultModelId = 'deepseek/deepseek-r1-0528:free';
-
-// --- LA LISTE DES ÉCRIVAINS EST MISE À JOUR POUR CORRESPONDRE (Copie de create_novel_page.dart) ---
-final Map<String, Map<String, String>> _writers = {
-  'deepseek/deepseek-r1-0528:free': {
-    'name': 'Deepseek (Par défaut)',
-    'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
-  },
-};
-
+// --- Les constantes locales sont SUPPRIMÉES ---
 
 class EditNovelPage extends ConsumerStatefulWidget {
   final Novel novel;
@@ -73,7 +64,7 @@ class EditNovelPageState extends ConsumerState<EditNovelPage> {
     _selectedGenre = _genres.contains(novel.genre) ? novel.genre : _genres.first;
     
     // On utilise le modelId existant ou le par défaut
-    _selectedModelId = _writers.keys.contains(novel.modelId) ? novel.modelId! : _defaultModelId;
+    _selectedModelId = kWritersMap.keys.contains(novel.modelId) ? novel.modelId! : kDefaultModelId; // ✅ MODIFIÉ
   }
 
   @override
@@ -186,7 +177,7 @@ class EditNovelPageState extends ConsumerState<EditNovelPage> {
                 labelText: 'Écrivain',
                 prefixIcon: Icon(Icons.edit_note_rounded),
               ),
-              items: _writers.entries.map((entry) {
+              items: kWritersMap.entries.map((entry) { // ✅ MODIFIÉ
                 return DropdownMenuItem<String>(
                   value: entry.key,
                   child: Column(
@@ -208,7 +199,7 @@ class EditNovelPageState extends ConsumerState<EditNovelPage> {
                 );
               }).toList(),
               selectedItemBuilder: (BuildContext context) {
-                return _writers.values.map<Widget>((item) {
+                return kWritersMap.values.map<Widget>((item) { // ✅ MODIFIÉ
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
