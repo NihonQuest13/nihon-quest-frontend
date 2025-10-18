@@ -130,7 +130,10 @@ class AIService {
         final modelToUse = modelId ?? _defaultChapterModel;
         
         final request = http.Request('POST', Uri.parse('$_backendUrl/generate_chapter_stream'));
-        request.headers.addAll({'Content-Type': 'application/json; charset=utf-8'});
+        request.headers.addAll({
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'text/event-stream' // Préciser qu'on attend un stream
+        });
         request.body = jsonEncode({
           'prompt': prompt,
           'model_id': modelToUse,
@@ -146,7 +149,7 @@ class AIService {
 
         streamedResponse.stream.transform(utf8.decoder).listen(
           (data) {
-            // Le backend renvoie directement le flux brut d'OpenAI, on le traite ici
+            // Le backend renvoie directement le flux brut, on le traite ici
             final lines = data.split('\n');
             for (final line in lines) {
               if (line.startsWith('data: ')) {
@@ -156,12 +159,28 @@ class AIService {
                 } else {
                   try {
                     final jsonData = jsonDecode(jsonString);
+
+                    // --- MODIFICATION HEARTBEAT ---
+                    // On vérifie si c'est un message de ping du backend
+                    if (jsonData['type'] == 'ping') {
+                      // C'est un heartbeat, on l'ignore et on continue
+                      continue;
+                    }
+                    // --- FIN DE LA MODIFICATION ---
+
+                    // Gestion des erreurs venant du stream backend
+                    if (jsonData['error'] != null) {
+                      debugPrint("Erreur reçue du stream backend: ${jsonData['error']}");
+                      controller.addError(ApiException(jsonData['error'], statusCode: jsonData['status_code']));
+                      continue;
+                    }
+
                     final content = jsonData['choices'][0]['delta']['content'];
                     if (content != null) {
                       controller.add(content);
                     }
                   } catch (e) { 
-                    // Ignorer les erreurs de parsing JSON qui peuvent arriver entre les chunks
+                    // Ignorer les erreurs de parsing JSON (chunks partiels, etc.)
                   }
                 }
               }
