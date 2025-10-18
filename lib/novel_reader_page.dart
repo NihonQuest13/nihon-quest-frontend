@@ -451,6 +451,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
   Future<void> _finalizeChapterGeneration(Novel novel, String fullText) async {
+  if (fullText.trim().isEmpty) {
+      debugPrint("Erreur: L'IA a renvoyé un stream vide (probable surcharge du modèle).");
+      // On simule une erreur de serveur
+      _handleGenerationError(ApiServerException("L'écrivain a renvoyé un chapitre vide. Réessayez.", statusCode: null));
+      return;
+    }
     if (!mounted) return;
 
     final syncService = ref.read(syncServiceProvider);
