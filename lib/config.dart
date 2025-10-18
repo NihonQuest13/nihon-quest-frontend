@@ -1,5 +1,7 @@
 // lib/config.dart
 
+import 'package:flutter/foundation.dart';
+
 /// L'ID du modèle d'IA par défaut utilisé pour la génération de chapitres.
 const String kDefaultModelId = 'deepseek/deepseek-r1-0528:free';
 
@@ -16,3 +18,7 @@ final Map<String, Map<String, String>> kWritersMap = {
   //   'description': 'Un modèle 7B rapide et populaire, alternative gratuite.',
   // },
 };
+
+const String kBaseUrl = kDebugMode
+    ? 'http://127.0.0.1:8000'
+    : 'https://nihon-quest-backend.onrender.com';
