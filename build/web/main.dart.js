@@ -27047,7 +27047,7 @@ _.y=c
 _.z="Japonais"
 _.Q=$
 _.as="Fantasy"
-_.at="mistralai/mistral-7b-instruct:free"
+_.at="google/gemini-2.0-flash-exp:free"
 _.ax=d
 _.d=_.ch=$
 _.c=_.a=null},
@@ -92242,7 +92242,7 @@ r.toString}p.CW=r
 p.as=B.b.n(r,s.c)?s.c:B.b.ga8(p.CW)
 p.at=B.b.n(B.js,s.d)?s.d:B.b.ga8(B.js)
 if($.a1V.aw(s.at)){r=s.at
-r.toString}else r="tngtech/deepseek-r1t2-chimera:free"
+r.toString}else r="google/gemini-2.0-flash-exp:free"
 p.ax=r},
 l(){var s=this.x,r=$.al()
 s.W$=r
@@ -107112,9 +107112,9 @@ $.q2=null
 $.aOd=1
 $.aGq=-9007199254740992
 $.aDm=function(){var s=t.N
-return A.a4(["tngtech/deepseek-r1t2-chimera:free",A.a4(["name","Deepseek (Par d\xe9faut)","description",u.b],s,s)],s,t.GU)}()
+return A.a4(["google/gemini-2.0-flash-exp:free",A.a4(["name","Gemini (Par d\xe9faut)","description",u.b],s,s)],s,t.GU)}()
 $.a1V=function(){var s=t.N
-return A.a4(["tngtech/deepseek-r1t2-chimera:free",A.a4(["name","Deepseek (Par d\xe9faut)","description",u.b],s,s)],s,t.GU)}()
+return A.a4(["google/gemini-2.0-flash-exp:free",A.a4(["name","Gemini (Par d\xe9faut)","description",u.b],s,s)],s,t.GU)}()
 $.aJ7=A.a4(["Japonais",B.Tj,"Fran\xe7ais",B.Tk,"Anglais",B.rO,"Espagnol",B.Ti,"Italien",B.Th,"Cor\xe9en",B.Tg,"default",B.rO],t.N,A.aw("lK"))
 $.aLq=0
 $.aXt=A.E(t.N,t.JW)

@@ -7,12 +7,12 @@ import 'models.dart';
 import 'providers.dart';
 
 // --- LE MODÈLE PAR DÉFAUT EST MAINTENANT MISTRAL (Copie de create_novel_page.dart) ---
-const String _defaultModelId = 'tngtech/deepseek-r1t2-chimera:free';
+const String _defaultModelId = 'google/gemini-2.0-flash-exp:free';
 
 // --- LA LISTE DES ÉCRIVAINS EST MISE À JOUR POUR CORRESPONDRE (Copie de create_novel_page.dart) ---
 final Map<String, Map<String, String>> _writers = {
-  'tngtech/deepseek-r1t2-chimera:free': {
-    'name': 'Deepseek (Par défaut)',
+  'google/gemini-2.0-flash-exp:free': {
+    'name': 'Gemini (Par défaut)',
     'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
   },
 };
