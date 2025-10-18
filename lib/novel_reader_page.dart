@@ -1,4 +1,4 @@
-// lib/novel_reader_page.dart
+// lib/novel_reader_page.dart (MODIFIÉ)
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
@@ -19,7 +19,7 @@ import 'services/sync_service.dart';
 import 'services/roadmap_service.dart';
 import 'widgets/streaming_text_widget.dart';
 
-enum ReadingDirection { horizontal, vertical }
+// enum ReadingDirection { horizontal, vertical } // SUPPRIMÉ
 
 class NovelReaderPage extends ConsumerStatefulWidget {
   final String novelId;
@@ -51,9 +51,9 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   late SharedPreferences _prefs;
   bool _prefsLoaded = false;
   static const String _prefFontSizeKey = 'reader_font_size_pref';
-  static const String _prefReadingDirectionKey = 'reader_direction_pref_';
+  // static const String _prefReadingDirectionKey = 'reader_direction_pref_'; // SUPPRIMÉ
   double _currentFontSize = 19.0;
-  ReadingDirection _readingDirection = ReadingDirection.horizontal;
+  // ReadingDirection _readingDirection = ReadingDirection.horizontal; // SUPPRIMÉ
   bool _isEditing = false;
   int? _editingChapterIndex;
   late TextEditingController _editingTitleController;
@@ -98,7 +98,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     super.dispose();
   }
 
-  // --- AMÉLIORATION DE LA GESTION DE LA TRADUCTION ---
+  // --- AMÉLIORATION DE LA GESTION DE LA TRADUCTION (Conservée) ---
   Future<void> _triggerReadingAndTranslation(String word) async {
     if (_isGeneratingNextChapter || !_prefsLoaded) return;
     final trimmedWord = word.trim().replaceAll(RegExp(r'[.,!?"、。」？！]'), '');
@@ -164,20 +164,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       }
     }
   }
-  // --- FIN DE L'AMÉLIORATION ---
+  // --- FIN DE LA GESTION DE TRADUCTION ---
 
 
   // ... (Tout le reste du fichier NovelReaderPageState reste identique)
   // _onPageChanged, _attachScrollListenerToCurrentPage, _updateScrollProgress,
-  // _loadPrefsAndInitialData, _getNovelFromProvider, _saveCurrentScrollPosition,
-  // _loadAndJumpToScrollPosition, _saveLastViewedPage, _saveFontSizePreference,
-  // _saveReadingDirection, _toggleReadingDirection, _getCurrentBackgroundColor,
-  // _getCurrentTextColor, _getBaseTextStyle, _startEditing, _cancelEditing, _saveEdits,
-  // _guardedGenerateChapter, _generateAndAddNewChapter, _finalizeChapterGeneration,
-  // _handleGenerationError, _showSnackbarMessage, _deleteCurrentChapter, _toggleUI,
-  // _handleTapToToggleUI, _showFontSizeDialog, _increaseFontSize, _decreaseFontSize,
-  // _showNovelInfoSheet, _buildInfoTabContent, _formatForVerticalReading,
-  // _buildFormattedTextSpans, _buildChapterReader, _buildChapterEditor
   void _onPageChanged() {
       if (!_pageController.hasClients || _pageController.page == null) return;
       final newPage = _pageController.page!.round();
@@ -228,10 +219,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     final novel = await _getNovelFromProvider();
     if (novel == null || !mounted) return;
 
+    /* LOGIQUE DE DIRECTION SUPPRIMÉE
     if (novel.language == 'Japonais') {
       final directionIndex = _prefs.getInt('$_prefReadingDirectionKey${widget.novelId}') ?? 0;
       _readingDirection = ReadingDirection.values[directionIndex];
     }
+    */
 
     int lastViewedPage = _prefs.getInt('last_page_${widget.novelId}') ?? 0;
     int initialPage = 0;
@@ -304,6 +297,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     await _prefs.setDouble(_prefFontSizeKey, size);
   }
 
+  /* FONCTIONS DE DIRECTION SUPPRIMÉES
   Future<void> _saveReadingDirection(ReadingDirection direction) async {
     if (!_prefsLoaded) return;
     await _prefs.setInt('$_prefReadingDirectionKey${widget.novelId}', direction.index);
@@ -317,6 +311,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     });
     _saveReadingDirection(_readingDirection);
   }
+  */
 
   Color _getCurrentBackgroundColor() => Theme.of(context).scaffoldBackgroundColor;
   Color _getCurrentTextColor() => Theme.of(context).colorScheme.onSurface;
@@ -746,15 +741,19 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
+  /* FONCTION DE FORMATAGE VERTICAL SUPPRIMÉE
   String _formatForVerticalReading(String text) {
     return text.split('').join('\n');
   }
+  */
 
-  List<TextSpan> _buildFormattedTextSpans(String text, TextStyle baseStyle, bool isVertical) {
+  List<TextSpan> _buildFormattedTextSpans(String text, TextStyle baseStyle) { // 'bool isVertical' SUPPRIMÉ
     String processedText = text.replaceAll('—', ', ').replaceAll(',,', ',');
+    /* LOGIQUE VERTICALE SUPPRIMÉE
     if (isVertical) {
       processedText = _formatForVerticalReading(processedText);
     }
+    */
 
     final List<TextSpan> spans = [];
     final List<String> parts = processedText.split('*');
@@ -774,7 +773,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
   Widget _buildChapterReader(Chapter chapter, int index, Novel novel) {
     final baseStyle = _getBaseTextStyle();
-    final isVertical = novel.language == 'Japonais' && _readingDirection == ReadingDirection.vertical;
+    // final isVertical = novel.language == 'Japonais' && _readingDirection == ReadingDirection.vertical; // SUPPRIMÉ
 
     final titleStyle = baseStyle.copyWith(
         fontSize: baseStyle.fontSize != null ? baseStyle.fontSize! + 4 : null,
@@ -793,8 +792,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     final textContent = SelectableText.rich(
       TextSpan(
         children: [
-          ..._buildFormattedTextSpans("${chapter.title}\n\n", titleStyle, isVertical),
-          ..._buildFormattedTextSpans(chapter.content, contentStyle, isVertical),
+          ..._buildFormattedTextSpans("${chapter.title}\n\n", titleStyle), // , isVertical), // Modifié
+          ..._buildFormattedTextSpans(chapter.content, contentStyle), // , isVertical), // Modifié
         ],
       ),
       textAlign: TextAlign.justify,
@@ -836,26 +835,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     final bottomPadding = _showUIElements ? 120.0 : 60.0;
 
+    /* BLOC IF (isVertical) SUPPRIMÉ
     if (isVertical) {
-      // Rappel : Ceci est une ROTATION, pas un vrai Tategaki.
-      return Container(
-        color: _getCurrentBackgroundColor(),
-        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight),
-        child: SingleChildScrollView(
-          controller: controller,
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: RotatedBox(
-            quarterTurns: 1,
-            child: Container(
-              padding: EdgeInsets.fromLTRB(20.0, 24.0, 20.0, bottomPadding),
-              width: MediaQuery.of(context).size.height,
-              child: textContent,
-            ),
-          ),
-        ),
-      );
+      // ...
     } else {
+    */
+      // Seul le bloc 'else' (lecture horizontale) est conservé
       return Container(
         color: _getCurrentBackgroundColor(),
         child: SingleChildScrollView(
@@ -864,8 +849,9 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           child: textContent,
         ),
       );
-    }
+    // } // FIN DU ELSE SUPPRIMÉ
   }
+
 
   Widget _buildChapterEditor() {
     // ... (code identique) ...
@@ -912,7 +898,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // --- AMÉLIORATION DE L'AFFICHAGE DES ERREURS DE TRADUCTION ---
+  // --- AMÉLIORATION DE L'AFFICHAGE DES ERREURS DE TRADUCTION (Conservée) ---
   Widget _buildTranslationArea(ThemeData theme) {
     final translationBg = theme.colorScheme.surfaceContainerHighest;
     final textColor = _getCurrentTextColor();
@@ -1243,7 +1229,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         final bool canDeleteChapter = novel.chapters.isNotEmpty && !isGenerating && _currentPage >= 0 && _currentPage < novel.chapters.length;
         final bool shouldShowTranslationArea = _selectedWord.isNotEmpty && (_isLoadingTranslation || _translationResult != null);
         final bool canEditChapter = novel.chapters.isNotEmpty && !isGenerating && _currentPage >= 0 && _currentPage < novel.chapters.length;
-        final bool showReadingDirectionToggle = novel.language == 'Japonais';
+        // final bool showReadingDirectionToggle = novel.language == 'Japonais'; // SUPPRIMÉ
 
         return PopScope(
           canPop: !isGenerating,
@@ -1299,6 +1285,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                               onPressed: () => Navigator.pop(context),
                             ),
                             actions: [
+                              /* BOUTON DE DIRECTION SUPPRIMÉ
                               if (showReadingDirectionToggle)
                                 IconButton(
                                   icon: Icon(_readingDirection == ReadingDirection.horizontal
@@ -1307,6 +1294,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                   tooltip: 'Changer la direction de lecture',
                                   onPressed: _toggleReadingDirection,
                                 ),
+                              */
                               PopupMenuButton<String>(
                                 icon: const Icon(Icons.more_vert),
                                 tooltip: 'Ouvrir le menu',
@@ -1421,7 +1409,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                   ? _buildEmptyState(theme)
                                   : PageView.builder(
                                       physics: _isEditing ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
-                                      key: ValueKey("${novel.id}_${novel.chapters.length}_$_readingDirection"),
+                                      key: ValueKey("${novel.id}_${novel.chapters.length}"), // MODIFIÉ : _$_readingDirection supprimé
                                       controller: _pageController,
                                       itemCount: novel.chapters.length,
                                       itemBuilder: (context, index) {
