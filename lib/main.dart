@@ -1,4 +1,4 @@
-// lib/main.dart (MODIFIÉ)
+// lib/main.dart (MODIFIÉ ET CORRIGÉ)
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,8 +15,6 @@ import 'utils/app_theme.dart';
 import 'widgets/splash_screen.dart';
 
 import 'auth_guard.dart'; // Import du nouveau garde
-
-final themeService = ThemeService(ThemeMode.dark);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,37 +61,14 @@ class MyApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
-      home: const AuthGuard(), // REMPLACEMENT : Utilisation du nouveau AuthGuard
+      home: const AuthGuard(), 
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-// L'ancienne classe AuthGate est supprimée.
-
-class ThemeService extends ValueNotifier<ThemeMode> {
-  ThemeService(super.value);
-  static const _themePrefKey = 'theme_mode_pref';
-
-  Future<void> loadTheme() async {
-    final prefs = await SharedPreferences.getInstance();
-    final themeIndex = prefs.getInt(_themePrefKey) ?? ThemeMode.dark.index;
-    value = ThemeMode.values[themeIndex];
-  }
-
-  void updateTheme(ThemeMode newThemeMode) {
-    if (value == newThemeMode) return;
-    value = newThemeMode;
-    _saveTheme(newThemeMode);
-  }
-
-  Future<void> _saveTheme(ThemeMode themeMode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_themePrefKey, themeMode.index);
-  }
-}
-
-final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return VocabularyService(prefs: prefs);
-});
+// ⛔️ LE PROVIDER EST SUPPRIMÉ D'ICI
+// final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
+//   final prefs = ref.watch(sharedPreferencesProvider);
+//   return VocabularyService(prefs: prefs);
+// });

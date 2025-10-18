@@ -22,6 +22,7 @@ dependencies:
   collection: ^1.18.0
   excel: ^4.0.2 # <-- DÉPENDANCE RÉ-AJOUTÉE
   flutter_dotenv: ^5.0.2
+  cached_network_image: ^3.3.0
   
 
   path_provider: ^2.1.3

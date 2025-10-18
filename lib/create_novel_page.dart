@@ -5,11 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models.dart';
 
 // --- Default model and writers list, consistent with the rest of the app ---
-const String _defaultModelId = 'google/gemini-2.0-flash-exp:free';
+const String _defaultModelId = 'deepseek/deepseek-r1-0528:free';
 
 final Map<String, Map<String, String>> _writers = {
-  'google/gemini-2.0-flash-exp:free': {
-    'name': 'Gemini (Par défaut)',
+  'deepseek/deepseek-r1-0528:free': {
+    'name': 'Deepseek (Par défaut)',
     'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
   },
 };

@@ -1,12 +1,11 @@
-// lib/auth_guard.dart
-import 'dart:async'; // AJOUTÉ : Pour StreamSubscription
+// lib/auth_guard.dart (CORRIGÉ - Version nettoyée)
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'home_page.dart';
+import 'home_page.dart'; // ✅ L'import simple fonctionne maintenant
 import 'login_page.dart';
-import 'main.dart'; 
 import 'providers.dart'; 
 import 'widgets/splash_screen.dart'; 
 
@@ -27,11 +26,11 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
     super.initState();
     _checkAuth();
     
-    // Écoute les changements d'état (login, logout) pour déclencher la vérification
+    // Écoute les changements d'état (login, logout)
     _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final session = data.session;
       if (session != null) {
-        _checkUserStatus(); // Session active, vérification du statut
+        _checkUserStatus();
       } else {
         // Déconnexion détectée
         if (mounted) {
@@ -86,7 +85,7 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
       if (status == 'approved') {
         if (mounted) setState(() { _isApproved = true; _isLoading = false; });
       } else {
-        // Statut non 'approved', déconnexion immédiate pour bloquer l'accès
+        // Statut non 'approved', déconnexion immédiate
         await Supabase.instance.client.auth.signOut();
         
         if (mounted) {
@@ -95,7 +94,7 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
             message = 'Profil introuvable. Veuillez vous réinscrire.';
           } else if (status == 'pending') {
             message = 'Votre compte est en attente d\'approbation.';
-          } else { // 'rejected'
+          } else {
             message = 'Votre demande d\'inscription a été refusée.';
           }
           
@@ -129,14 +128,13 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
     }
 
     if (_isApproved) {
-      // Utilisateur approuvé : on charge la HomePage avec les services
       final vocabularyService = ref.watch(vocabularyServiceProvider);
-      return HomePage(
+      return HomePage( // ✅ L'appel simple fonctionne maintenant
         vocabularyService: vocabularyService,
         themeService: themeService,
       );
     } else {
-      // Utilisateur non connecté : on retourne la page de connexion
+      // Utilisateur non connecté
       return const LoginPage();
     }
   }
