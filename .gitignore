@@ -76,3 +76,7 @@ node_modules/
 coverage/
 *.tmp
 *.temp
+ 
+# Cloudflare Pages 
+/build/web/ 
+/build/web/** 
