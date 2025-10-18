@@ -1,0 +1,28 @@
+# Configuration Cloudflare Pages pour NihonQuest
+
+[build]
+command = """
+  if [ ! -d "$HOME/flutter" ]; then
+    git clone https://github.com/flutter/flutter.git -b stable --depth 1 $HOME/flutter
+  fi
+  export PATH="$PATH:$HOME/flutter/bin"
+  flutter config --no-analytics
+  flutter pub get
+  flutter build web --release
+"""
+output = "build/web"
+
+[build.environment]
+NODE_VERSION = "18"
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+
+[[headers]]
+for = "/*"
+[headers.values]
+X-Frame-Options = "DENY"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
