@@ -1,0 +1,42 @@
+A LIRE ABSOLUMENT - Suivi de Projet & Contexte IA
+Ce document sert de référence centrale pour le développement de l'application. Il a pour but de maintenir le contexte pour l'IA et d'assurer la cohérence des fonctionnalités au fil des modifications.
+
+1. Fonctionnalités Principales de l'Application
+Création de Romans : L'utilisateur peut créer un nouveau roman en spécifiant un titre, une langue, un niveau de difficulté (N5, B1, etc.), un genre, des spécifications (thèmes, personnages) et en choisissant un "écrivain IA" parmi plusieurs modèles disponibles (DeepSeek, Qwen, etc.).
+Gestion de la Couverture : Possibilité d'ajouter, de modifier et de supprimer une image de couverture pour chaque roman.
+Génération de Chapitres par IA : Le cœur de l'application. L'IA génère le contenu des chapitres en se basant sur les paramètres du roman et le contexte des chapitres précédents.
+Lecture des Romans : Interface de lecture sobre, avec navigation page par page (un chapitre par page).
+Édition & Suppression : L'utilisateur peut modifier le contenu et le titre de chaque chapitre, ou supprimer un chapitre entier.
+Plan de l'Histoire (Roadmap) : Un résumé de l'intrigue est automatiquement généré par l'IA et mis à jour tous les 3 chapitres pour maintenir la cohérence narrative sur le long terme mais déclencher à 3+1 pour prendre en compte les modifications potentiellement apportées dans le chapitre 3 par l'usager.
+Système de Vocabulaire (Japonais) : Lors de la lecture d'un roman en japonais, une sélection de mot déclenche une recherche de la lecture (hiragana) et de la traduction, puis ajoute automatiquement le mot à une liste de vocabulaire globale. Cette liste peut être exportée (TSV pour Anki, Excel).
+
+Backend Local & Synchronisation :
+Un serveur backend local (Python/FAISS) gère l'indexation des chapitres pour la recherche de contexte par l'IA.
+L'application peut démarrer ce serveur manuellement si besoin.
+Toutes les modifications (ajout/suppression de chapitre/roman) sont ajoutées à une file d'attente de synchronisation (SyncService).
+Cette file est traitée en arrière-plan pour communiquer avec le backend sans jamais bloquer l'interface.
+
+2. Journal des Modifications (Log)
+
+Date : 11/08/2025
+
+Fichier(s) Modifié(s) : lib/novel_reader_page.dart
+
+Description : Refonte majeure de l'écran de lecture (NovelReaderPage).
+
+Panneau d'info : Remplacé par une interface à onglets ("Général", "Écrivain", "Intrigue") pour une meilleure clarté.
+
+Ergonomie UI : La barre de progression reste désormais toujours visible en bas, même lorsque le reste de l'interface est masqué.
+
+Bugs Corrigés : Correction du titre qui se glissait sous la barre d'état et du bug de la sélection de taille de police qui sautait à 30.
+
+Lecture Verticale (Japonais) : Ajout d'un bouton pour basculer entre la lecture horizontale et verticale (de droite à gauche).
+
+Date : 11/08/2025
+
+Fichier(s) Modifié(s) : lib/services/sync_service.dart
+
+Description : Mise en place d'un système de "disjoncteur" dans la file de synchronisation. Une tâche qui échoue plus de 2 fois est analysée. Si le backend est connecté, la tâche est considérée comme invalide et supprimée pour éviter de bloquer la file. Si le backend est déconnecté, la tâche est conservée pour une tentative ultérieure.
+
+3. Fonctionnalités Disparues / Manquantes
+(À compléter si des fonctionnalités régressent ou sont souhaitées)

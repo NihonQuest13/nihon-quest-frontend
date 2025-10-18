@@ -1,0 +1,78 @@
+# Compiled files
+*.exe
+*.msi
+*.dmg
+*.apk
+*.ipa
+*.aab
+
+# Build directories
+build/
+dist/
+release/
+installers/
+out/
+*.build/
+*.dist/
+*.onefile-build/
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Android
+android/app/debug
+android/app/profile
+android/app/release
+android/.gradle/
+android/app/build/
+*.jks
+
+# iOS
+ios/build/
+ios/Pods/
+ios/.symlinks/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.hmap
+*.ipa
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc
+.env
+.env.local
+node_modules/
+coverage/
+*.tmp
+*.temp
