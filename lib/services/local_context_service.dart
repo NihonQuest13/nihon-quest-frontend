@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'dart:io' show Platform; // ✅ AJOUT pour détecter la plateforme
 
 class BackendException implements Exception {
   final String message;
@@ -22,11 +23,29 @@ class LocalContextService {
   final http.Client _client;
   final String baseUrl;
 
+  // --- ✅ MODIFICATION : Logique de sélection d'URL (Dev vs Prod) ---
+  static String _getBaseUrl() {
+    if (kDebugMode) {
+      // En mode DEBUG (développement)
+      if (!kIsWeb && Platform.isAndroid) {
+        // Spécifique à l'émulateur Android, qui accède au localhost de la machine via 10.0.2.2
+        return 'http://10.0.2.2:8000';
+      } else {
+        // Pour iOS, Web, Desktop (ou simulateur iOS)
+        return 'http://127.0.0.1:8000';
+      }
+    } else {
+      // En mode RELEASE (production)
+      return 'https://nihon-quest-api.onrender.com';
+    }
+  }
+
   // Constructeur par défaut
   LocalContextService()
       : _client = http.Client(),
-        // --- CORRECTION CRUCIALE : On utilise le port 8000 pour le développement ---
-        baseUrl = 'https://nihon-quest-api.onrender.com';
+        // Le constructeur appelle maintenant notre logique
+        baseUrl = _getBaseUrl();
+  // --- FIN MODIFICATION ---
         
   // Constructeur spécial utilisé par l'isolate
   LocalContextService.withUrl(String url)
@@ -39,13 +58,23 @@ class LocalContextService {
 
   Future<bool> pingBackend() async {
     try {
-      final response = await _client.get(Uri.parse(baseUrl)).timeout(const Duration(seconds: 3));
-      return response.statusCode == 200;
+      // ✅ AJOUT : Log pour voir quelle URL est testée
+      debugPrint("SERVICE: Pinging backend at $baseUrl...");
+      final response = await _client.get(Uri.parse('$baseUrl/healthz')).timeout(const Duration(seconds: 5)); // Utilise /healthz
+      
+      if(response.statusCode == 200) {
+        debugPrint("SERVICE: Backend ping success.");
+        return true;
+      }
+      debugPrint("SERVICE: Backend ping failed with status ${response.statusCode}.");
+      return false;
     } on TimeoutException {
+      debugPrint("SERVICE: Backend ping timed out.");
       throw BackendException("Le serveur n'a pas répondu à temps (timeout).");
     } catch (e) {
       debugPrint("Erreur de ping non gérée : $e");
-      throw BackendException("Impossible de joindre le serveur. Est-il bien démarré ?");
+      // C'est souvent une erreur de connexion (ex: 127.0.0.1 refusée)
+      throw BackendException("Impossible de joindre le serveur. Est-il bien démarré sur $baseUrl ? Erreur: ${e.toString()}");
     }
   }
 
