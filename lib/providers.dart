@@ -1,4 +1,4 @@
-// lib/providers.dart (CORRIGÉ ET FINAL)
+// lib/providers.dart (CORRIGÉ - Sans relation chapters)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +8,7 @@ import 'models.dart';
 import 'services/local_context_service.dart';
 import 'services/roadmap_service.dart';
 import 'services/sync_service.dart';
-import 'services/vocabulary_service.dart'; // ✅ AJOUT DE L'IMPORT
+import 'services/vocabulary_service.dart';
 
 // --- Providers inchangés ---
 enum ServerStatus { connecting, connected, failed }
@@ -32,7 +32,7 @@ final localContextServiceProvider = Provider<LocalContextService>((ref) {
   return service;
 });
 
-// --- LOGIQUE DU THÈME DÉPLACÉE ICI ---
+// --- LOGIQUE DU THÈME ---
 final themeService = ThemeService(ThemeMode.dark);
 
 class ThemeService extends ValueNotifier<ThemeMode> {
@@ -87,7 +87,6 @@ final sortOptionProvider = StateProvider<SortOption>((ref) => SortOption.updated
 
 final supabaseProvider = Provider((ref) => Supabase.instance.client);
 
-// ... (NovelsNotifier reste identique) ...
 final novelsProvider = AsyncNotifierProvider<NovelsNotifier, List<Novel>>(NovelsNotifier.new);
 
 class NovelsNotifier extends AsyncNotifier<List<Novel>> {
@@ -111,17 +110,30 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
 
     debugPrint("[NovelsProvider] Récupération depuis Supabase...");
     
-    // --- DÉBUT DE LA CORRECTION ---
-    // On change select('*') en 'select('*, chapters(*)')'
-    // pour que Supabase retourne les romans ET tous les chapitres associés.
-    final data = await supabase
+    // ✅ CORRECTION 1 : Récupérer uniquement les novels SANS la relation chapters
+    final novelsData = await supabase
         .from('novels')
-        .select('*, chapters(*)') 
+        .select('*') // Plus de chapters(*)
         .eq('user_id', userId)
-        .order('updated_at', ascending: false); 
-    // --- FIN DE LA CORRECTION ---
-        
-    final novels = data.map((row) => Novel.fromJson(row)).toList();
+        .order('updated_at', ascending: false);
+    
+    // ✅ CORRECTION 2 : Récupérer les chapters séparément pour chaque roman
+    final novels = <Novel>[];
+    for (final novelRow in novelsData) {
+      final novelId = novelRow['id'];
+      
+      // Récupérer les chapitres pour ce roman
+      final chaptersData = await supabase
+          .from('chapters')
+          .select('*')
+          .eq('novel_id', novelId)
+          .order('created_at', ascending: true);
+      
+      // Ajouter les chapitres au JSON du roman
+      novelRow['chapters'] = chaptersData;
+      
+      novels.add(Novel.fromJson(novelRow));
+    }
     
     _lastFetch = now;
     return _sortNovels(novels);
@@ -157,6 +169,8 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
   Map<String, dynamic> _novelToSupabaseJson(Novel novel, String userId) {
     final data = novel.toJson();
     data['user_id'] = userId;
+    // Ne pas inclure les chapters dans l'update du novel
+    data.remove('chapters');
     return data;
   }
 
@@ -171,7 +185,20 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data([novel, ...currentNovels]);
 
     try {
+      // Insérer le roman
       await supabase.from('novels').insert(novelData);
+      
+      // Insérer les chapitres séparément
+      if (novel.chapters.isNotEmpty) {
+        final chaptersData = novel.chapters.map((chapter) {
+          final chapterJson = chapter.toJson();
+          chapterJson['novel_id'] = novel.id;
+          return chapterJson;
+        }).toList();
+        
+        await supabase.from('chapters').insert(chaptersData);
+      }
+      
       _lastFetch = DateTime.now(); 
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de l'ajout, rechargement...");
@@ -192,10 +219,25 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data(updatedList);
 
     try {
+      // Mettre à jour le roman
       await supabase
         .from('novels')
         .update(novelData)
         .eq('id', novel.id);
+      
+      // Supprimer les anciens chapitres et réinsérer les nouveaux
+      await supabase.from('chapters').delete().eq('novel_id', novel.id);
+      
+      if (novel.chapters.isNotEmpty) {
+        final chaptersData = novel.chapters.map((chapter) {
+          final chapterJson = chapter.toJson();
+          chapterJson['novel_id'] = novel.id;
+          return chapterJson;
+        }).toList();
+        
+        await supabase.from('chapters').insert(chaptersData);
+      }
+      
       _lastFetch = DateTime.now();
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la mise à jour, rechargement...");
@@ -222,6 +264,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data(currentNovels.where((n) => n.id != novelId).toList());
     
     try {
+      // Les chapitres seront supprimés automatiquement via CASCADE
       await supabase.from('novels').delete().eq('id', novelId);
       _lastFetch = DateTime.now();
     } catch (e) {
@@ -238,7 +281,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
   }
 }
 
-// ✅ LE PROVIDER EST DÉPLACÉ ICI
 final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return VocabularyService(prefs: prefs);

@@ -1,9 +1,6 @@
-// lib/services/startup_service.dart
-import 'dart:convert';
+// lib/services/startup_service.dart (CORRIGÉ)
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:collection/collection.dart';
 
 import '../models.dart';
 import 'local_context_service.dart';
@@ -27,8 +24,14 @@ class StartupService {
 
     try {
       final localContextService = _ref.read(localContextServiceProvider);
-      // On récupère les romans depuis le provider Supabase
-      final localNovels = await _ref.read(novelsProvider.notifier).build();
+      
+      // ✅ CORRECTION : Utiliser l'état actuel au lieu de .build()
+      final asyncNovels = _ref.read(novelsProvider);
+      final localNovels = asyncNovels.when(
+        data: (novels) => novels,
+        loading: () => <Novel>[],
+        error: (_, __) => <Novel>[],
+      );
       
       final backendNovelIds = (await localContextService.listIndexedNovels()).toSet();
       final localNovelIds = localNovels.map((n) => n.id).toSet();

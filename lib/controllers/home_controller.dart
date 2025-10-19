@@ -1,4 +1,4 @@
-// lib/controllers/home_controller.dart (CORRIGÉ ET FINAL)
+// lib/controllers/home_controller.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models.dart';
@@ -7,8 +7,6 @@ import '../services/ai_service.dart';
 import '../services/ai_prompts.dart';
 import '../services/sync_service.dart';
 
-/// Controller qui gère la logique métier de la page d'accueil
-/// Sépare la logique de l'UI pour une meilleure testabilité
 class HomeController {
   final Ref _ref;
   final BuildContext _context;
@@ -21,10 +19,6 @@ class HomeController {
     final statusNotifier = _ref.read(serverStatusProvider.notifier);
     statusNotifier.state = ServerStatus.connecting;
     
-    // --- DÉBUT DE LA CORRECTION "NUAGE QUI TOURNE" ---
-    // Version simple et robuste sans Future.any
-    // Le 'isBackendRunning' a son propre timeout, on a juste
-    // besoin de catcher les erreurs imprévues.
     try {
       final isRunning = await _ref.read(localContextServiceProvider).isBackendRunning();
       
@@ -32,12 +26,11 @@ class HomeController {
         statusNotifier.state = isRunning ? ServerStatus.connected : ServerStatus.failed;
       }
     } catch (e) {
-      debugPrint("Erreur inattendue lors de checkBackendStatus: $e");
+      debugPrint("Erreur lors de checkBackendStatus: $e");
       if (_context.mounted) {
-        statusNotifier.state = ServerStatus.failed; // Forcer l'état d'échec
+        statusNotifier.state = ServerStatus.failed;
       }
     }
-    // --- FIN DE LA CORRECTION ---
   }
 
   // ================== Synchronisation ==================
@@ -54,12 +47,13 @@ class HomeController {
     _showFeedback('Synchronisation complète avec le serveur en cours...', color: Colors.blue);
 
     try {
-      // --- DÉBUT CORRECTION ERREUR "getNovelsWithFullContent" ---
-      // On utilise .build()
-      // 'novelsToSync' contiendra maintenant les chapitres
-      // grâce à notre correction dans lib/providers.dart
-      final novelsToSync = await _ref.read(novelsProvider.notifier).build();
-      // --- FIN CORRECTION ERREUR ---
+      // ✅ CORRECTION : Utiliser l'état actuel du provider au lieu de .build()
+      final asyncNovels = _ref.read(novelsProvider);
+      final novelsToSync = asyncNovels.when(
+        data: (novels) => novels,
+        loading: () => <Novel>[],
+        error: (_, __) => <Novel>[],
+      );
       
       if (!_context.mounted) return;
 
@@ -74,7 +68,7 @@ class HomeController {
         for (final chapter in novel.chapters) {
           await localContextService.addChapter(
             novelId: novel.id,
-            chapterText: chapter.content, // 'chapter.content' est maintenant disponible
+            chapterText: chapter.content,
           );
         }
       }
@@ -109,7 +103,6 @@ class HomeController {
         _showFeedback('Roman "${newNovel.title}" créé avec succès !');
       }
 
-      // Ajout à la file de synchronisation
       final syncTask = SyncTask(
         action: 'add',
         novelId: newNovel.id,
@@ -134,28 +127,6 @@ class HomeController {
         );
       }
     }
-  }
-
-  // ================== Dialog de génération ==================
-  
-  // (Cette méthode est correctement déplacée dans home_page.dart, rien à changer ici)
-  Future<String?> _showStreamingDialog(Novel novel) async {
-    final prompt = await AIService.preparePrompt(
-      novel: novel,
-      isFirstChapter: true,
-    );
-
-    if (!_context.mounted || prompt.isEmpty) {
-      throw Exception("La préparation du prompt a échoué.");
-    }
-
-    final stream = AIService.streamChapterFromPrompt(
-      prompt: prompt,
-      modelId: novel.modelId,
-      language: novel.language,
-    );
-    
-    return null; // La logique du dialog est dans home_page.dart
   }
 
   // ================== Helpers ==================
