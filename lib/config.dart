@@ -12,11 +12,10 @@ final Map<String, Map<String, String>> kWritersMap = {
     'name': 'Deepseek (Par défaut - Test)',
     'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
   },
-  // Exemple si vous vouliez en ajouter un autre :
-  // 'mistralai/mistral-7b-instruct:free': {
-  //   'name': 'Mistral 7B',
-  //   'description': 'Un modèle 7B rapide et populaire, alternative gratuite.',
-  // },
+  'alibaba/tongyi-deepresearch-30b-a3b:free': {
+    'name': 'Alibaba (Par défaut - Test)',
+    'description': 'Rapide, cohérent et excellent pour la narration. (Recommandé)',
+  },
 };
 
 const String kBaseUrl = kDebugMode

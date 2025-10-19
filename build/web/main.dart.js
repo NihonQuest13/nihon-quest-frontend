@@ -107198,8 +107198,8 @@ $.ln=null
 $.q3=null
 $.aOn=1
 $.aGA=-9007199254740992
-$.pD=function(){var s=t.N
-return A.a5(["deepseek/deepseek-r1-0528:free",A.a5(["name","Deepseek (Par d\xe9faut - Test)","description","Rapide, coh\xe9rent et excellent pour la narration. (Recommand\xe9)"],s,s)],s,t.GU)}()
+$.pD=function(){var s="Rapide, coh\xe9rent et excellent pour la narration. (Recommand\xe9)",r=t.N
+return A.a5(["deepseek/deepseek-r1-0528:free",A.a5(["name","Deepseek (Par d\xe9faut - Test)","description",s],r,r),"alibaba/tongyi-deepresearch-30b-a3b:free",A.a5(["name","Alibaba (Par d\xe9faut - Test)","description",s],r,r)],r,t.GU)}()
 $.aJi=A.a5(["Japonais",B.Tk,"Fran\xe7ais",B.Tl,"Anglais",B.rN,"Espagnol",B.Tj,"Italien",B.Ti,"Cor\xe9en",B.Th,"default",B.rN],t.N,A.aw("lM"))
 $.aLA=0
 $.aXC=A.E(t.N,t.JW)
