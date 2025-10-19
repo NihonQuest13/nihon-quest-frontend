@@ -20,7 +20,5 @@ final Map<String, Map<String, String>> kWritersMap = {
 
 const String kBaseUrl = kDebugMode
     ? 'http://127.0.0.1:8000'
-    // ⬇️ CORRECTION DE L'URL DE PRODUCTION ⬇️
-    : 'https://nihon-quest-backend.onrender.com';
-
-// ℹ️ CORRECTION : L'accolade fermante "}" en trop a été supprimée d'ici.
+    // ✅ URL DE PRODUCTION CORRIGÉE
+    : 'https://nihon-quest-api.onrender.com';

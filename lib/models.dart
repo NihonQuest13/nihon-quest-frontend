@@ -1,11 +1,11 @@
 // lib/models.dart
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart'; // On importe le package pour générer des UUID
+import 'package:uuid/uuid.dart';
 
 // --- ON AJOUTE UN GÉNÉRATEUR D'UUID GLOBAL ---
 const uuid = Uuid();
 
-// Les classes VocabularyEntry et ChapterSummary restent inchangées pour l'instant
+// Les classes VocabularyEntry et ChapterSummary restent inchangées
 class VocabularyEntry {
   final String word;
   final String reading;
@@ -88,13 +88,10 @@ class ChapterSummary {
 
 
 class Novel {
-  final String id; // L'ID n'est plus nullable, on s'assure qu'il est toujours là
+  final String id;
   String title;
-  // CHANGÉ: Suppression du mot-clé final pour permettre la modification
   String level; 
-  // CHANGÉ: Suppression du mot-clé final pour permettre la modification
   String genre; 
-  // CHANGÉ: Suppression du mot-clé final pour permettre la modification
   String specifications; 
   final List<Chapter> chapters;
   final List<ChapterSummary> summaries;
@@ -107,7 +104,7 @@ class Novel {
   String? modelId;
 
   Novel({
-    String? id, // L'ID est optionnel dans le constructeur
+    String? id,
     required this.title,
     required this.level,
     required this.genre,
@@ -121,7 +118,7 @@ class Novel {
     this.roadMap,
     this.previousRoadMap,
     this.modelId,
-  }) : id = id ?? uuid.v4(), // Si aucun ID n'est fourni, on génère un UUID !
+  }) : id = id ?? uuid.v4(),
        chapters = chapters ?? [],
        summaries = summaries ?? [],
        updatedAt = updatedAt ?? createdAt;
@@ -150,7 +147,6 @@ class Novel {
   }
 
   Map<String, dynamic> toJson() {
-    // Ne change pas, on envoie toujours l'ID
     return {
       'id': id,
       'title': title,
@@ -164,7 +160,6 @@ class Novel {
       'language': language,
       'cover_image_path': coverImagePath,
       'roadmap': roadMap,
-      // 'previousRoadMap' n'existe pas dans la BDD, on ne l'envoie pas
       'model_id': modelId,
     };
   }
@@ -193,25 +188,24 @@ class Novel {
     }
 
     final now = DateTime.now();
-    // Supabase utilise des noms avec underscore
     final createdAt = parseDateTime(json['created_at'], now);
     final updatedAt = parseDateTime(json['updated_at'], createdAt);
 
+    // ✅ CORRECTION : Conversion explicite en String avec toString() pour éviter l'erreur "field not initialized"
     return Novel(
       id: json['id']?.toString() ?? uuid.v4(),
-      title: json['title'] ?? 'Titre inconnu',
-      level: json['level'] ?? 'N/A',
-      genre: json['genre'] ?? 'N/A',
-      specifications: json['specifications'] ?? '',
+      title: json['title']?.toString() ?? 'Titre inconnu',
+      level: json['level']?.toString() ?? 'N3',
+      genre: json['genre']?.toString() ?? 'Fantasy',
+      specifications: json['specifications']?.toString() ?? '',
       chapters: chapterList,
       summaries: summaryList,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      language: json['language'] ?? 'Japonais',
-      coverImagePath: json['cover_image_path'],
-      roadMap: json['roadmap'] as String?,
-      // previousRoadMap n'est pas dans la BDD
-      modelId: json['model_id'] as String?,
+      language: json['language']?.toString() ?? 'Japonais',
+      coverImagePath: json['cover_image_path']?.toString(),
+      roadMap: json['roadmap']?.toString(),
+      modelId: json['model_id']?.toString(),
     );
   }
 }
@@ -223,11 +217,11 @@ class Chapter {
   final DateTime createdAt;
 
   Chapter({
-    String? id, // L'ID est optionnel
+    String? id,
     required this.title,
     required this.content,
     required this.createdAt,
-  }) : id = id ?? uuid.v4(); // On génère un UUID s'il n'y en a pas
+  }) : id = id ?? uuid.v4();
 
   Map<String, dynamic> toJson() {
     return {

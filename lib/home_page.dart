@@ -8,10 +8,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'controllers/home_controller.dart';
 import 'create_novel_page.dart' as create;
 import 'edit_novel_page.dart';
-// import 'main.dart'; // ⛔️ SUPPRIMÉ : Causait une dépendance circulaire
 import 'models.dart';
 import 'novel_reader_page.dart';
-import 'providers.dart'; // ✅ 'ThemeService' vient maintenant d'ici
+import 'providers.dart';
 import 'services/ai_service.dart';
 import 'services/sync_service.dart';
 import 'services/startup_service.dart';
@@ -26,7 +25,7 @@ class HomePage extends ConsumerStatefulWidget {
   });
 
   final VocabularyService vocabularyService;
-  final ThemeService themeService; // ✅ Le type est trouvé via 'providers.dart'
+  final ThemeService themeService;
 
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
@@ -45,7 +44,8 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   void _initializeController() {
     if (!mounted) return;
-    _controller = HomeController(ref as Ref<Object?>, context);
+    // ✅ CORRECTION : Passer 'ref' directement, pas 'ref as Ref<Object?>'
+    _controller = HomeController(ref, context);
     _controller.checkBackendStatus();
   }
 
@@ -546,6 +546,42 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 }
 
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InfoChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ==================== NOVEL COVER ITEM ====================
 
 class _NovelCoverItem extends ConsumerStatefulWidget {
@@ -855,42 +891,6 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _InfoChip({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       ),
     );
   }

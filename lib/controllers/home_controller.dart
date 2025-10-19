@@ -1,4 +1,4 @@
-// lib/controllers/home_controller.dart (NETTOYÉ)
+// lib/controllers/home_controller.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models.dart';
@@ -8,7 +8,8 @@ import '../services/ai_prompts.dart';
 import '../services/sync_service.dart';
 
 class HomeController {
-  final Ref _ref;
+  // ✅ CORRECTION : Accepter WidgetRef au lieu de Ref
+  final WidgetRef _ref;
   final BuildContext _context;
 
   HomeController(this._ref, this._context);
