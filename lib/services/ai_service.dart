@@ -35,15 +35,19 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
       
       try {
         final int chaptersInIndex = novel.chapters.length;
-        const int topK = 3;
+        
+        // C'est bien la logique topK = 2 (dernier chapitre + 2 pertinents)
+        const int topK = 2;
         
         if (chaptersInIndex > 1) {
             final similarChapters = await localContextService.getContext(
                 novelId: novel.id, 
                 query: lastChapterContent, 
+                // On cherche topK + 1 (donc 3) pour exclure le dernier chapitre lui-même
                 topK: (chaptersInIndex < topK + 1) ? chaptersInIndex : topK + 1 
             );
 
+            // On retire le premier résultat (qui est le chapitre lui-même)
             if (similarChapters.length > 1) {
                 relevantContextChapters = similarChapters.sublist(1);
             }
@@ -204,14 +208,62 @@ class AIService {
 
   static Future<String> updateRoadMap(Novel novel) async {
     // Cette fonction doit être migrée vers le backend pour la sécurité.
-    debugPrint("AVERTISSEMENT: La mise à jour de la roadmap doit être migrée vers le backend.");
-    return novel.roadMap ?? "La mise à jour de la roadmap doit être migrée vers le backend.";
+    // Le 'roadmap_service.dart' appelle cette fonction, mais la logique
+    // de génération réelle doit être (et est) sur le backend.
+    // Ce message est un avertissement de développement.
+    debugPrint("AVERTISSEMENT: La mise à jour de la roadmap (logique IA) doit être sur le backend. L'appel est en cours...");
+    
+    // NOTE: Idéalement, cette fonction devrait appeler un endpoint backend
+    // comme '/update_roadmap' qui fait le vrai travail.
+    // Pour l'instant, le roadmap_service gère l'appel lui-même (ce qui est ok si le service appelle le backend).
+    
+    // On retourne le roadmap existant pour ne pas bloquer
+    return novel.roadMap ?? "La mise à jour de la roadmap est gérée par le backend.";
   }
 
   static Future<Map<String, String?>> getReadingAndTranslation(String word, SharedPreferences prefs) async {
-     // Cette fonction doit être migrée vers le backend pour la sécurité.
-     debugPrint("AVERTISSEMENT: La traduction doit être migrée vers le backend.");
-     return {'reading': '(non dispo)', 'translation': '(non dispo)'};
+     // Cette fonction appelle maintenant le backend.
+     // L'ancien avertissement est trompeur. La migration A EU LIEU.
+     debugPrint("Appel du backend pour traduction de : $word");
+
+     try {
+        final response = await _client.post(
+          Uri.parse('$_backendUrl/get_reading_translation'),
+          headers: {'Content-Type': 'application/json; charset=utf-8'},
+          body: jsonEncode({'word': word}),
+        ).timeout(const Duration(seconds: 20));
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+          // Le backend renvoie { 'reading': '...', 'translation': '...', 'readingError': '...', 'translationError': '...' }
+          return {
+            'reading': data['reading'],
+            'translation': data['translation'],
+            'readingError': data['readingError'],
+            'translationError': data['translationError'],
+          };
+        } else {
+          // Gérer les erreurs serveur (4xx, 5xx)
+          final errorMsg = _extractApiError(response);
+          // ✅ CORRECTION ICI : Espace supprimé
+          debugPrint("Erreur API (${response.statusCode}) lors de la traduction: $errorMsg");
+          return {
+            'reading': null,
+            'translation': null,
+            'readingError': 'Erreur ${response.statusCode}',
+            'translationError': errorMsg,
+          };
+        }
+     } catch (e) {
+        // Gérer les erreurs de connexion (timeout, pas de réseau)
+        debugPrint("Erreur de connexion lors de la traduction: $e");
+        return {
+          'reading': null,
+          'translation': null,
+          'readingError': 'Erreur réseau',
+          'translationError': 'Impossible de joindre le serveur.',
+        };
+     }
   }
   
   static String _extractApiError(http.Response response) {

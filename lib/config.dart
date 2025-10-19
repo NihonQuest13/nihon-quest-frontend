@@ -16,8 +16,8 @@ final Map<String, Map<String, String>> kWritersMap = {
     'name': 'Z-ai (Phase de test)',
     'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
   },
-  'microsoft/mai-ds-r1:free': {
-    'name': 'Microsoft MAI DS R1 (Phase de test)',
+  'qwen/qwen3-235b-a22b:free': {
+    'name': 'Qwen 3.5B (Phase de test)',
     'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
   },
 };

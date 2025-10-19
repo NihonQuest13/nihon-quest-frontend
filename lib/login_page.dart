@@ -1,4 +1,4 @@
-// lib/login_page.dart
+// lib/login_page.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -42,7 +42,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       // AuthGuard gère la navigation en cas de succès
 
-    } on AuthException catch (error) {
+    } on AuthException { // ✅ CORRECTION: Variable 'error' supprimée (unused_catch_clause)
       if (mounted) {
         setState(() {
           _errorMessage = 'Identifiants invalides.';
@@ -106,7 +106,8 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _emailController,
                     decoration: InputDecoration(
                       labelText: 'Adresse Email',
-                      prefixIcon: Icon(Icons.email_outlined, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6)), // Icône avec couleur thème
+                      // ✅ CORRECTION: .withOpacity(0.6) remplacé par .withAlpha(153) (deprecated_member_use)
+                      prefixIcon: Icon(Icons.email_outlined, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)), // Icône avec couleur thème
                       // Utilisation des décorations définies dans le thème
                     ),
                     keyboardType: TextInputType.emailAddress,
@@ -129,7 +130,8 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _passwordController,
                     decoration: InputDecoration(
                       labelText: 'Mot de passe',
-                      prefixIcon: Icon(Icons.lock_outline, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6)), // Icône avec couleur thème
+                      // ✅ CORRECTION: .withOpacity(0.6) remplacé par .withAlpha(153) (deprecated_member_use)
+                      prefixIcon: Icon(Icons.lock_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)), // Icône avec couleur thème
                     ),
                     obscureText: true,
                     validator: (value) {
@@ -200,7 +202,10 @@ class _LoginPageState extends State<LoginPage> {
                         onPressed: _isLoading ? null : () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const SignUpPage()),
+                            MaterialPageRoute(
+                              // ✅ CORRECTION: Appel simple à SignUpPage(), plus besoin de 'onLoginTapped'
+                              builder: (context) => const SignUpPage()
+                            ),
                           );
                         },
                         child: Text(

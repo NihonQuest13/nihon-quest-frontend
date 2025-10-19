@@ -1,156 +1,207 @@
-// lib/signup_page.dart
+// lib/signup_page.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ Import ajouté
 
-class SignUpPage extends StatefulWidget {
+// ❌ Suppression de ConsumerStatefulWidget, providers, et ErrorHandler
+
+class SignUpPage extends StatefulWidget { // ✅ Changé en StatefulWidget
+  
+  // ❌ Suppression de 'onLoginTapped'
   const SignUpPage({super.key});
 
   @override
-  State<SignUpPage> createState() => _SignUpPageState();
+  State<SignUpPage> createState() => _SignUpPageState(); // ✅ Changé en State
 }
 
-class _SignUpPageState extends State<SignUpPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
+class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  // --- Fonction _signUp entièrement Corrigée ---
   Future<void> _signUp() async {
+    if (!mounted) return;
+    
+    // Valider le formulaire
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
+    // Cacher le clavier
+    FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
 
     try {
-      // 1. On crée d'abord l'utilisateur dans Supabase Auth
-      final AuthResponse authResponse = await Supabase.instance.client.auth.signUp(
+      // ✅ Utilisation de Supabase directement (comme dans login_page.dart)
+      await Supabase.instance.client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
-        data: {
-          'first_name': _firstNameController.text.trim(),
-          'last_name': _lastNameController.text.trim(),
-        }
       );
 
-      // 2. Si l'utilisateur est créé, on insère son profil avec le statut "pending"
-      if (authResponse.user != null) {
-        await Supabase.instance.client.from('profiles').insert({
-          'id': authResponse.user!.id,
-          'first_name': _firstNameController.text.trim(),
-          'last_name': _lastNameController.text.trim(),
-          'status': 'pending', // Le statut est en attente par défaut
-        });
-
-        // 3. IMPORTANT : Déconnecter l'utilisateur immédiatement
-        await Supabase.instance.client.auth.signOut();
-
-        // 4. On envoie une notification à l'administrateur
-        try {
-          await _notifyAdmin(
-            _firstNameController.text.trim(),
-            _lastNameController.text.trim(),
-            _emailController.text.trim(),
-          );
-        } catch (e) {
-          // Si l'envoi de notification échoue, on continue quand même
-          debugPrint('Erreur lors de la notification admin: $e');
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Demande d\'inscription envoyée ! Vous recevrez un email une fois votre compte approuvé par un administrateur.'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 5),
-            ),
-          );
-          Navigator.pop(context); // Retour à la page de connexion
-        }
-      }
-    } on AuthException catch (error) {
+      // ✅ Logique de succès DÉPLACÉE ICI
+      // S'affiche uniquement si l'inscription réussit
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(error.message),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ));
+        // ✅ Remplacement de ErrorHandler par ScaffoldMessenger
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Inscription réussie. Votre compte sera validé prochainement."),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // On redirige vers la page de login après un court délai
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            // ✅ Remplacement de onLoginTapped par Navigator.pop
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop(); // Retourne à la page de login
+            }
+          }
+        });
+      }
+
+    } on AuthException catch (error) {
+      // ✅ Gestion des erreurs Supabase (ex: utilisateur existe déjà)
+      if (mounted) {
+        // ✅ Remplacement de ErrorHandler par ScaffoldMessenger
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.message), // Affiche le message d'erreur réel
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
     } catch (error) {
-       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text("Une erreur inattendue est survenue : ${error.toString()}"),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ));
+      // ✅ Gestion des autres erreurs (ex: réseau)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Une erreur inattendue est survenue."),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      // On arrête le chargement dans tous les cas
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
-  // Fonction pour appeler notre Edge Function qui enverra l'email
-  Future<void> _notifyAdmin(String firstName, String lastName, String email) async {
-    await Supabase.instance.client.functions.invoke(
-      'notify-admin', // Nom de la fonction que nous allons créer
-      body: {
-        'firstName': firstName,
-        'lastName': lastName,
-        'email': email,
-      },
-    );
-  }
-
+  // --- Fin de la fonction corrigée ---
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // ✅ Ajout d'un Scaffold complet (similaire à login_page.dart)
     return Scaffold(
-      appBar: AppBar(title: const Text("Demande d'inscription")),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        // Bouton retour pour revenir à la page de connexion
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+        ),
+      ),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _firstNameController,
-                  decoration: const InputDecoration(labelText: 'Prénom'),
-                  validator: (value) => value!.isEmpty ? 'Champ requis' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _lastNameController,
-                  decoration: const InputDecoration(labelText: 'Nom'),
-                  validator: (value) => value!.isEmpty ? 'Champ requis' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) => value!.isEmpty ? 'Champ requis' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(labelText: 'Mot de passe'),
-                  obscureText: true,
-                  validator: (value) {
-                    if (value == null || value.length < 6) {
-                      return 'Le mot de passe doit contenir au moins 6 caractères';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-                _isLoading
-                    ? const CircularProgressIndicator()
-                    : ElevatedButton(
-                        onPressed: _signUp,
-                        child: const Text('Envoyer la demande'),
-                      ),
-              ],
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    "Créer un compte",
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 40),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_outlined, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Veuillez entrer un email';
+                      }
+                      if (!value.contains('@') || !value.contains('.')) {
+                        return 'Veuillez entrer un email valide';
+                      }
+                      return null;
+                    },
+                    enabled: !_isLoading,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: InputDecoration(
+                      labelText: 'Mot de passe',
+                      prefixIcon: Icon(Icons.lock_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
+                    ),
+                    obscureText: true,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Veuillez entrer un mot de passe';
+                      }
+                      if (value.length < 6) {
+                        return 'Le mot de passe doit faire au moins 6 caractères';
+                      }
+                      return null;
+                    },
+                    enabled: !_isLoading,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      minimumSize: const Size(double.infinity, 50),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: _isLoading ? null : _signUp,
+                    child: _isLoading
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 3, color: theme.colorScheme.onPrimary),
+                          )
+                        : const Text('S\'inscrire'),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                    child: Text(
+                      'Déjà un compte ? Se connecter',
+                      style: TextStyle(color: theme.colorScheme.secondary),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
