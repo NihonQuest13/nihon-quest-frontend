@@ -1,21 +1,21 @@
-// lib/signup_page.dart (CORRIGÉ)
+// lib/signup_page.dart (CORRIGÉ ET AMÉLIORÉ)
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ Import ajouté
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-// ❌ Suppression de ConsumerStatefulWidget, providers, et ErrorHandler
-
-class SignUpPage extends StatefulWidget { // ✅ Changé en StatefulWidget
-  
-  // ❌ Suppression de 'onLoginTapped'
+class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
 
   @override
-  State<SignUpPage> createState() => _SignUpPageState(); // ✅ Changé en State
+  State<SignUpPage> createState() => _SignUpPageState();
 }
 
-class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
+class _SignUpPageState extends State<SignUpPage> {
+  // ✅ Contrôleurs ajoutés pour nom et prénom
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _nomController = TextEditingController();
+  final _prenomController = TextEditingController();
+  
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
@@ -23,6 +23,8 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _nomController.dispose(); // ✅ Ajouté
+    _prenomController.dispose(); // ✅ Ajouté
     super.dispose();
   }
 
@@ -40,16 +42,32 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
     setState(() => _isLoading = true);
 
     try {
-      // ✅ Utilisation de Supabase directement (comme dans login_page.dart)
-      await Supabase.instance.client.auth.signUp(
+      // 1. INSCRIPTION AUTH (Étape 1)
+      final authResponse = await Supabase.instance.client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+      
+      // Sécurité : vérifier que l'utilisateur a bien été créé
+      if (authResponse.user == null) {
+        throw const AuthException("Erreur : La création de l'utilisateur a échoué.");
+      }
+      
+      final userId = authResponse.user!.id;
 
-      // ✅ Logique de succès DÉPLACÉE ICI
-      // S'affiche uniquement si l'inscription réussit
+      // 2. INSERTION PROFILES (Étape 2)
+      // C'est ici qu'on ajoute l'utilisateur à ta table 'profiles'
+      await Supabase.instance.client.from('profiles').insert({
+        'id': userId, // L'ID doit correspondre à l'ID de l'utilisateur authentifié
+        'email': _emailController.text.trim(),
+        'nom': _nomController.text.trim(),
+        'prenom': _prenomController.text.trim(),
+        'validated': false // Mettre 'false' par défaut pour que tu puisses le valider
+      });
+
+      // 3. SUCCÈS (Seulement si les étapes 1 et 2 ont réussi)
+      // ✅ Correction du bug du double message : le succès est DÉCLARÉ ICI.
       if (mounted) {
-        // ✅ Remplacement de ErrorHandler par ScaffoldMessenger
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Inscription réussie. Votre compte sera validé prochainement."),
@@ -60,7 +78,6 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
         // On redirige vers la page de login après un court délai
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            // ✅ Remplacement de onLoginTapped par Navigator.pop
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop(); // Retourne à la page de login
             }
@@ -69,22 +86,21 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
       }
 
     } on AuthException catch (error) {
-      // ✅ Gestion des erreurs Supabase (ex: utilisateur existe déjà)
+      // Gère les erreurs d'authentification (ex: "User already exists")
       if (mounted) {
-        // ✅ Remplacement de ErrorHandler par ScaffoldMessenger
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error.message), // Affiche le message d'erreur réel
+            content: Text(error.message),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
     } catch (error) {
-      // ✅ Gestion des autres erreurs (ex: réseau)
+      // Gère les erreurs d'insertion (ex: RLS, table 'profiles' mal configurée)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text("Une erreur inattendue est survenue."),
+            content: Text("Erreur d'inscription : ${error.toString()}"),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -102,12 +118,10 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // ✅ Ajout d'un Scaffold complet (similaire à login_page.dart)
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        // Bouton retour pour revenir à la page de connexion
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
           onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
@@ -134,6 +148,46 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 40),
+
+                  // ✅ Champ Prénom
+                  TextFormField(
+                    controller: _prenomController,
+                    decoration: InputDecoration(
+                      labelText: 'Prénom',
+                      prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
+                    ),
+                    keyboardType: TextInputType.name,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Veuillez entrer votre prénom';
+                      }
+                      return null;
+                    },
+                    enabled: !_isLoading,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // ✅ Champ Nom
+                  TextFormField(
+                    controller: _nomController,
+                    decoration: InputDecoration(
+                      labelText: 'Nom',
+                      prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
+                    ),
+                    keyboardType: TextInputType.name,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Veuillez entrer votre nom';
+                      }
+                      return null;
+                    },
+                    enabled: !_isLoading,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Champ Email
                   TextFormField(
                     controller: _emailController,
                     decoration: InputDecoration(
@@ -155,6 +209,8 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                   ),
                   const SizedBox(height: 20),
+
+                  // Champ Mot de passe
                   TextFormField(
                     controller: _passwordController,
                     decoration: InputDecoration(
@@ -175,6 +231,7 @@ class _SignUpPageState extends State<SignUpPage> { // ✅ Changé en State
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                   ),
                   const SizedBox(height: 24),
+                  
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: theme.colorScheme.primary,
