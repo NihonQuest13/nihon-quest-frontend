@@ -1,9 +1,8 @@
-// lib/services/local_context_service.dart (CORRECTION PING)
+// lib/services/local_context_service.dart (WEB-SAFE)
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'dart:io' show Platform;
 
 class BackendException implements Exception {
   final String message;
@@ -23,15 +22,15 @@ class LocalContextService {
   final http.Client _client;
   final String baseUrl;
 
+  // ✅ CORRECTION WEB : Logique simplifiée sans Platform
   static String _getBaseUrl() {
-    if (kDebugMode) {
-      if (!kIsWeb && Platform.isAndroid) {
-        return 'http://10.0.2.2:8000';
-      } else {
-        return 'http://127.0.0.1:8000';
-      }
+    // En mode debug sur le web, on peut tester avec localhost
+    // Mais en production (Cloudflare), on utilise TOUJOURS l'URL de production
+    if (kDebugMode && !kIsWeb) {
+      // Mode debug sur mobile/desktop
+      return 'http://127.0.0.1:8000';
     } else {
-      // ✅ CORRECTION : URL de production correcte
+      // Production OU Web (même en debug)
       return 'https://nihon-quest-api.onrender.com';
     }
   }
@@ -50,26 +49,22 @@ class LocalContextService {
 
   Future<bool> pingBackend() async {
     try {
-      debugPrint("SERVICE: Pinging backend at $baseUrl...");
+      debugPrint("SERVICE: Pinging backend at $baseUrl/healthz...");
       
-      // ✅ CORRECTION : Utiliser /list_novels au lieu de /healthz
-      // C'est un endpoint plus simple et plus fiable
       final response = await _client
-          .get(Uri.parse('$baseUrl/list_novels'))
-          .timeout(const Duration(seconds: 10)); // ✅ Timeout augmenté à 10s pour Render
+          .get(Uri.parse('$baseUrl/healthz'))
+          .timeout(const Duration(seconds: 5));
       
-      if (response.statusCode == 200) {
-        debugPrint("SERVICE: Backend ping success.");
-        return true;
-      }
-      debugPrint("SERVICE: Backend ping failed with status ${response.statusCode}.");
-      return false;
+      final success = response.statusCode == 200;
+      debugPrint("SERVICE: Backend ping result = $success (status: ${response.statusCode})");
+      return success;
+      
     } on TimeoutException {
-      debugPrint("SERVICE: Backend ping timed out.");
-      throw BackendException("Le serveur n'a pas répondu à temps (timeout).");
+      debugPrint("SERVICE: Backend ping timed out after 5 seconds.");
+      return false;
     } catch (e) {
-      debugPrint("Erreur de ping non gérée : $e");
-      throw BackendException("Impossible de joindre le serveur. Est-il bien démarré sur $baseUrl ? Erreur: ${e.toString()}");
+      debugPrint("SERVICE: Backend ping error: $e");
+      return false;
     }
   }
 
