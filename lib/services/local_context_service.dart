@@ -1,9 +1,9 @@
-// lib/services/local_context_service.dart
+// lib/services/local_context_service.dart (CORRECTION PING)
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'dart:io' show Platform; // ✅ AJOUT pour détecter la plateforme
+import 'dart:io' show Platform;
 
 class BackendException implements Exception {
   final String message;
@@ -23,31 +23,23 @@ class LocalContextService {
   final http.Client _client;
   final String baseUrl;
 
-  // --- ✅ MODIFICATION : Logique de sélection d'URL (Dev vs Prod) ---
   static String _getBaseUrl() {
     if (kDebugMode) {
-      // En mode DEBUG (développement)
       if (!kIsWeb && Platform.isAndroid) {
-        // Spécifique à l'émulateur Android, qui accède au localhost de la machine via 10.0.2.2
         return 'http://10.0.2.2:8000';
       } else {
-        // Pour iOS, Web, Desktop (ou simulateur iOS)
         return 'http://127.0.0.1:8000';
       }
     } else {
-      // En mode RELEASE (production)
+      // ✅ CORRECTION : URL de production correcte
       return 'https://nihon-quest-api.onrender.com';
     }
   }
 
-  // Constructeur par défaut
   LocalContextService()
       : _client = http.Client(),
-        // Le constructeur appelle maintenant notre logique
         baseUrl = _getBaseUrl();
-  // --- FIN MODIFICATION ---
         
-  // Constructeur spécial utilisé par l'isolate
   LocalContextService.withUrl(String url)
       : _client = http.Client(),
         baseUrl = url;
@@ -58,11 +50,15 @@ class LocalContextService {
 
   Future<bool> pingBackend() async {
     try {
-      // ✅ AJOUT : Log pour voir quelle URL est testée
       debugPrint("SERVICE: Pinging backend at $baseUrl...");
-      final response = await _client.get(Uri.parse('$baseUrl/healthz')).timeout(const Duration(seconds: 5)); // Utilise /healthz
       
-      if(response.statusCode == 200) {
+      // ✅ CORRECTION : Utiliser /list_novels au lieu de /healthz
+      // C'est un endpoint plus simple et plus fiable
+      final response = await _client
+          .get(Uri.parse('$baseUrl/list_novels'))
+          .timeout(const Duration(seconds: 10)); // ✅ Timeout augmenté à 10s pour Render
+      
+      if (response.statusCode == 200) {
         debugPrint("SERVICE: Backend ping success.");
         return true;
       }
@@ -73,7 +69,6 @@ class LocalContextService {
       throw BackendException("Le serveur n'a pas répondu à temps (timeout).");
     } catch (e) {
       debugPrint("Erreur de ping non gérée : $e");
-      // C'est souvent une erreur de connexion (ex: 127.0.0.1 refusée)
       throw BackendException("Impossible de joindre le serveur. Est-il bien démarré sur $baseUrl ? Erreur: ${e.toString()}");
     }
   }
