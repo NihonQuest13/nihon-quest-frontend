@@ -1,12 +1,13 @@
-// lib/create_novel_page.dart (CORRIGÉ)
+// lib/create_novel_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ AJOUT DE L'IMPORT
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
 import 'config.dart';
+import 'providers.dart'; // --- MODIFICATION : Ajout de l'import des providers
+import 'services/roadmap_service.dart'; // --- MODIFICATION : Ajout de l'import du service
 
-// --- THIS IS THE NEW, CORRECT WIDGET ---
 class CreateNovelPage extends ConsumerStatefulWidget {
   const CreateNovelPage({super.key});
 
@@ -18,6 +19,10 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _specificationsController = TextEditingController();
+
+  // --- MODIFICATION : Ajout d'un état de chargement ---
+  bool _isLoading = false;
+  // --- FIN MODIFICATION ---
 
   // --- Default values for a new novel ---
   String _selectedLanguage = 'Japonais';
@@ -54,30 +59,33 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     super.dispose();
   }
 
-  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
-  void _createNovel() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
+  // --- ⬇️ MODIFICATION PRINCIPALE ICI ⬇️ ---
+  // On rend la fonction 'async' pour appeler les services
+  Future<void> _createNovel() async {
+    if (!(_formKey.currentState?.validate() ?? false) || _isLoading) {
       return;
     }
 
-    // ✅ RÉCUPÉRER L'USER ID ACTUEL
+    setState(() => _isLoading = true);
+
     final userId = Supabase.instance.client.auth.currentUser?.id;
 
-    // Sécurité : vérifier si l'utilisateur est bien connecté
     if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Erreur : Utilisateur non connecté. Reconnexion..."),
-          backgroundColor: Colors.red,
-        ),
-      );
-      // Optionnel : déconnecter pour forcer le retour au login
-      // Supabase.instance.client.auth.signOut();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Erreur : Utilisateur non connecté. Reconnexion..."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      setState(() => _isLoading = false);
       return;
     }
 
+    // 1. On crée l'objet Novel (il a futureOutline: null pour l'instant)
     final newNovel = Novel(
-      user_id: userId, // ✅ AJOUT DU CHAMP user_id
+      user_id: userId,
       title: _titleController.text.trim(),
       level: _selectedLevel,
       genre: _selectedGenre,
@@ -85,13 +93,45 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
       language: _selectedLanguage,
       modelId: _selectedModelId,
       createdAt: DateTime.now(),
-      summaries: [], // ✅ Initialiser avec une liste vide
+      summaries: [],
     );
 
-    // Return the newly created novel to the HomePage
-    Navigator.pop(context, newNovel);
+    try {
+      // 2. On sauvegarde le roman dans Supabase via le provider
+      // (à ce stade, future_outline EST ENCORE NULL dans la BDD)
+      await ref.read(novelsProvider.notifier).addNovel(newNovel);
+
+      if (!context.mounted) return; // Vérification de sécurité
+
+      // 3. C'EST L'ÉTAPE MANQUANTE !
+      // On appelle le service pour générer le plan.
+      // Le service va :
+      //    a) Appeler l'IA pour générer le plan
+      //    b) Mettre à jour l'objet 'newNovel'
+      //    c) Appeler 'updateNovel' pour sauvegarder le plan dans Supabase
+      await ref.read(roadmapServiceProvider).triggerFutureOutlineUpdateIfNeeded(newNovel, context);
+
+      if (!context.mounted) return; 
+
+      // 4. On ferme la page
+      Navigator.pop(context);
+
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Erreur lors de la création : ${e.toString()}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
-  // --- ⬆️ FIN DE LA CORRECTION ⬆️ ---
+  // --- ⬆️ FIN DE LA MODIFICATION ⬆️ ---
 
   @override
   Widget build(BuildContext context) {
@@ -233,9 +273,16 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
               ),
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('Commencer l\'aventure'),
-              onPressed: _createNovel,
+              icon: _isLoading 
+                  ? Container( // --- MODIFICATION : Ajout du loader ---
+                      width: 24, 
+                      height: 24, 
+                      padding: const EdgeInsets.all(2.0),
+                      child: const CircularProgressIndicator(strokeWidth: 3, color: Colors.white)
+                    )
+                  : const Icon(Icons.auto_awesome),
+              label: Text(_isLoading ? 'Création en cours...' : 'Commencer l\'aventure'),
+              onPressed: _isLoading ? null : _createNovel, // --- MODIFICATION ---
             ),
           ],
         ),
