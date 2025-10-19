@@ -1,11 +1,10 @@
-// lib/create_novel_page.dart
+// lib/create_novel_page.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ AJOUT DE L'IMPORT
 
 import 'models.dart';
-import 'config.dart'; // ✅ AJOUT DE L'IMPORT
-
-// --- Les constantes locales sont SUPPRIMÉES ---
+import 'config.dart';
 
 // --- THIS IS THE NEW, CORRECT WIDGET ---
 class CreateNovelPage extends ConsumerStatefulWidget {
@@ -24,7 +23,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
   String _selectedLanguage = 'Japonais';
   late String _selectedLevel;
   String _selectedGenre = 'Fantasy';
-  String _selectedModelId = kDefaultModelId; // ✅ MODIFIÉ
+  String _selectedModelId = kDefaultModelId; 
 
   final Map<String, List<String>> _languageLevels = {
     'Anglais': ['A1 (Beginner)', 'A2 (Elementary)', 'B1 (Intermediate)', 'B2 (Advanced)', 'C1 (Proficient)', 'C2 (Mastery)', 'Native'],
@@ -55,12 +54,30 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     super.dispose();
   }
 
+  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   void _createNovel() {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
 
+    // ✅ RÉCUPÉRER L'USER ID ACTUEL
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    // Sécurité : vérifier si l'utilisateur est bien connecté
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Erreur : Utilisateur non connecté. Reconnexion..."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Optionnel : déconnecter pour forcer le retour au login
+      // Supabase.instance.client.auth.signOut();
+      return;
+    }
+
     final newNovel = Novel(
+      user_id: userId, // ✅ AJOUT DU CHAMP user_id
       title: _titleController.text.trim(),
       level: _selectedLevel,
       genre: _selectedGenre,
@@ -68,11 +85,13 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
       language: _selectedLanguage,
       modelId: _selectedModelId,
       createdAt: DateTime.now(),
+      summaries: [], // ✅ Initialiser avec une liste vide
     );
 
     // Return the newly created novel to the HomePage
     Navigator.pop(context, newNovel);
   }
+  // --- ⬆️ FIN DE LA CORRECTION ⬆️ ---
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +126,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 labelText: 'Écrivain',
                 prefixIcon: Icon(Icons.edit_note_rounded),
               ),
-              items: kWritersMap.entries.map((entry) { // ✅ MODIFIÉ
+              items: kWritersMap.entries.map((entry) { 
                 return DropdownMenuItem<String>(
                   value: entry.key,
                   child: Column(
@@ -129,7 +148,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 );
               }).toList(),
               selectedItemBuilder: (BuildContext context) {
-                return kWritersMap.values.map<Widget>((item) { // ✅ MODIFIÉ
+                return kWritersMap.values.map<Widget>((item) { 
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Text(item['name']!, overflow: TextOverflow.ellipsis),

@@ -34,8 +34,6 @@ class VocabularyEntry {
       'word': word,
       'reading': reading,
       'translation': translation,
-      // Note: ce 'createdAt' est OK car il n'est pas lié à Supabase
-      // mais s'il était dans sa propre table, il faudrait le passer en snake_case
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -67,7 +65,6 @@ class ChapterSummary {
     return {
       'endChapterIndex': endChapterIndex,
       'summaryText': summaryText,
-      // Note: idem que pour VocabularyEntry
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -92,6 +89,7 @@ class ChapterSummary {
 
 class Novel {
   final String id;
+  final String user_id; // ✅ AJOUTÉ: C'est vital pour l'insertion
   String title;
   String level; 
   String genre; 
@@ -108,6 +106,7 @@ class Novel {
 
   Novel({
     String? id,
+    required this.user_id, // ✅ AJOUTÉ: Doit être fourni lors de la création
     required this.title,
     required this.level,
     required this.genre,
@@ -149,19 +148,22 @@ class Novel {
     return true;
   }
 
-  // Cette partie est déjà correcte (utilise snake_case pour les clés Supabase)
+  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'user_id': user_id, // ✅ AJOUTÉ: Nécessaire pour l'insertion
       'title': title,
       'level': level,
       'genre': genre,
       'specifications': specifications,
-      // 'chapters' et 'summaries' ne sont pas des colonnes directes dans la table 'novels'
-      // Ils sont gérés par leurs propres tables ou stockés localement.
-      // Si 'chapters' était une colonne JSONB, il faudrait utiliser la clé 'chapters'
-      'chapters': chapters.map((chapter) => chapter.toJson()).toList(), 
+      
+      // ⛔️ SUPPRIMÉ: 'chapters' n'est pas une colonne dans la table 'novels'.
+      // 'chapters': chapters.map((chapter) => chapter.toJson()).toList(), 
+      
+      // ✅ GARDÉ: 'summaries' va maintenant s'insérer dans la colonne JSONB
       'summaries': summaries.map((summary) => summary.toJson()).toList(),
+      
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'language': language,
@@ -171,9 +173,11 @@ class Novel {
     };
   }
 
-  // Cette partie est déjà correcte (utilise snake_case pour lire les clés Supabase)
+  // --- ⬇️ CORRECTION AUSSI DANS fromJson ⬇️ ---
   factory Novel.fromJson(Map<String, dynamic> json) {
     var chapterList = <Chapter>[];
+    // 'chapters' est lu ici car le 'novelsProvider' fait un JOIN
+    // Ce n'est pas un champ direct de la table 'novels'
     if (json['chapters'] != null && json['chapters'] is List) {
       chapterList = (json['chapters'] as List)
           .map((chapterJson) => Chapter.fromJson(chapterJson as Map<String, dynamic>))
@@ -181,6 +185,7 @@ class Novel {
     }
 
     var summaryList = <ChapterSummary>[];
+    // ✅ MODIFIÉ: Lit la colonne 'summaries' de la BDD
     if (json['summaries'] != null && json['summaries'] is List) {
        summaryList = (json['summaries'] as List)
            .map((summaryJson) => ChapterSummary.fromJson(summaryJson as Map<String, dynamic>))
@@ -199,8 +204,15 @@ class Novel {
     final createdAt = parseDateTime(json['created_at'], now);
     final updatedAt = parseDateTime(json['updated_at'], createdAt);
 
+    // ✅ AJOUTÉ: 'user_id' est lu depuis la BDD
+    final userId = json['user_id']?.toString();
+    if (userId == null) {
+      debugPrint("ALERTE: Roman ${json['id']} chargé sans user_id !");
+    }
+
     return Novel(
       id: json['id']?.toString() ?? uuid.v4(),
+      user_id: userId ?? '00000000-0000-0000-0000-000000000000', // Fallback
       title: json['title']?.toString() ?? 'Titre inconnu',
       level: json['level']?.toString() ?? 'N3',
       genre: json['genre']?.toString() ?? 'Fantasy',
@@ -230,17 +242,17 @@ class Chapter {
     required this.createdAt,
   }) : id = id ?? uuid.v4();
 
-  // ✅ CORRECTION ICI
+  // Cette partie est déjà corrigée (utilise snake_case)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'content': content,
-      'created_at': createdAt.toIso8601String(), // 'createdAt' -> 'created_at'
+      'created_at': createdAt.toIso8601String(),
     };
   }
 
-  // ✅ CORRECTION ICI
+  // Cette partie est déjà corrigée (utilise snake_case)
   factory Chapter.fromJson(Map<String, dynamic> json) {
      DateTime parseDateTime(dynamic dateString, DateTime fallback) {
        if (dateString is String) {
@@ -248,7 +260,6 @@ class Chapter {
        }
        return fallback;
      }
-     // 'createdAt' -> 'created_at'
      final createdAt = parseDateTime(json['created_at'], DateTime.now()); 
 
     return Chapter(
