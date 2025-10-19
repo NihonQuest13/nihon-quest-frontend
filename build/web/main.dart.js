@@ -107591,8 +107591,8 @@ $.lp=null
 $.q4=null
 $.aOG=1
 $.aGS=-9007199254740992
-$.pF=function(){var s=t.N
-return A.a3(["deepseek/deepseek-chat-v3-0324:free",A.a3(["name","Deepseek (Par d\xe9faut - Test)","description","Rapide, coh\xe9rent et excellent pour la narration. (Recommand\xe9)"],s,s),"z-ai/glm-4.5-air:free",A.a3(["name","Z-ai (Phase de test)","description","Toujours en phase de test, peut produire des r\xe9sultats incoh\xe9rents."],s,s)],s,t.GU)}()
+$.pF=function(){var s="Toujours en phase de test, peut produire des r\xe9sultats incoh\xe9rents.",r=t.N
+return A.a3(["meituan/longcat-flash-chat:free",A.a3(["name","Longcat (Phase de test)","description",s],r,r),"z-ai/glm-4.5-air:free",A.a3(["name","Z-ai (Phase de test)","description",s],r,r),"microsoft/mai-ds-r1:free",A.a3(["name","Microsoft MAI DS R1 (Phase de test)","description",s],r,r)],r,t.GU)}()
 $.aJA=A.a3(["Japonais",B.Tt,"Fran\xe7ais",B.Tu,"Anglais",B.rR,"Espagnol",B.Ts,"Italien",B.Tr,"Cor\xe9en",B.Tq,"default",B.rR],t.N,A.aw("lO"))
 $.aLT=0
 $.aXV=A.E(t.N,t.JW)
