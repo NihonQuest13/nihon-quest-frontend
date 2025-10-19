@@ -1,4 +1,4 @@
-// lib/models.dart (CORRIGÉ - AVEC CHAPTER EN SNAKE_CASE)
+// lib/models.dart 
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -103,6 +103,10 @@ class Novel {
   String? roadMap;
   String? previousRoadMap;
   String? modelId;
+  
+  // --- MODIFICATION : Ajout du plan directeur (ton "sommaire") ---
+  String? futureOutline;
+  // --- FIN MODIFICATION ---
 
   Novel({
     String? id,
@@ -120,6 +124,7 @@ class Novel {
     this.roadMap,
     this.previousRoadMap,
     this.modelId,
+    this.futureOutline, // --- MODIFICATION : Ajout au constructeur ---
   }) : id = id ?? uuid.v4(),
        chapters = chapters ?? [],
        summaries = summaries ?? [],
@@ -164,6 +169,7 @@ class Novel {
       'cover_image_path': coverImagePath,
       'roadmap': roadMap,
       'model_id': modelId,
+      'future_outline': futureOutline, // --- MODIFICATION : Ajout au JSON (snake_case pour la BDD) ---
     };
   }
 
@@ -214,6 +220,7 @@ class Novel {
       coverImagePath: json['cover_image_path']?.toString(),
       roadMap: json['roadmap']?.toString(),
       modelId: json['model_id']?.toString(),
+      futureOutline: json['future_outline']?.toString(), // --- MODIFICATION : Ajout depuis JSON ---
     );
   }
 }

@@ -26,12 +26,16 @@ class LanguagePrompts {
   final String titleChapterSuffix;
   final String contextNotAvailable;
   final String firstChapterContext;
-  
-  // --- MODIFICATION : Ajout des nouveaux champs pour le contexte ---
-  final String roadmapHeader;
+
+  // --- MODIFICATION : Ajout des champs pour le plan directeur (ton "sommaire") ---
+  final String roadmapHeader; // Pour le résumé du passé (ex: "Plan de l'histoire (Résumé...)")
   final String similarExcerptHeader; // Doit contenir [NUMBER]
   final String similarExcerptFooter;
+  final String futureOutlinePrompt; // Le prompt pour générer le plan de 10 chapitres
+  final String futureOutlineHeader; // Le titre pour la section du plan dans le prompt de chapitre
+  final String futureOutlinePriorityRule; // Ta règle de priorité
   // --- FIN MODIFICATION ---
+
 
   const LanguagePrompts({
     required this.systemChapter,
@@ -63,6 +67,9 @@ class LanguagePrompts {
     required this.roadmapHeader,
     required this.similarExcerptHeader,
     required this.similarExcerptFooter,
+    required this.futureOutlinePrompt,
+    required this.futureOutlineHeader,
+    required this.futureOutlinePriorityRule,
     // --- FIN MODIFICATION ---
   });
 }
@@ -196,10 +203,35 @@ Your response must only contain the text of the summary. Do NOT start your respo
   titleChapterSuffix: '',
   contextNotAvailable: "No context available.",
   firstChapterContext: "This is the first chapter.",
+  
   // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Story Plan (Overall summary of the story so far)",
   similarExcerptHeader: "--- Relevant Excerpt [NUMBER] ---",
   similarExcerptFooter: "--- End of Excerpt ---",
+  futureOutlinePrompt: '''
+You are a master storyteller and plot planner.
+Here is the concept for the novel:
+- Title: [NOVEL_TITLE]
+- Genre: [NOVEL_GENRE]
+- Specifications: [NOVEL_SPECIFICATIONS]
+
+Here is the summary of what has already happened (the "Roadmap"):
+<Past Roadmap>
+[CURRENT_ROADMAP]
+</Past Roadmap>
+
+Your task is to create a **plot outline (sommaire)** for the **next 10 chapters**.
+The plan must be a list of 10 points, each point being a **single, concise sentence** describing the main event or development for that chapter.
+The pacing must be **slow and natural**, like a human-written novel. Develop a single story arc progressively, not 10 mini-stories.
+
+Required output format (ONLY the list):
+1. [Sentence for Chapter N+1]
+2. [Sentence for Chapter N+2]
+...
+10. [Sentence for Chapter N+10]
+''',
+  futureOutlineHeader: "Plot Outline for the next 10 chapters (Guiding thread):",
+  futureOutlinePriorityRule: "\n**Priority Rule**: This outline is your guiding thread. HOWEVER, if it conflicts with the logical continuation of the previous sentence/chapter, **always prioritize the logical continuation** (the FAISS context).",
   // --- FIN MODIFICATION ---
 );
 
@@ -311,10 +343,35 @@ Votre réponse ne doit contenir que le texte du résumé. Ne commencez PAS votre
   titleChapterSuffix: '',
   contextNotAvailable: "Pas de contexte disponible.",
   firstChapterContext: "C'est le premier chapitre.",
+  
   // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Plan de l'histoire (Résumé général de l'histoire jusqu'à présent)",
   similarExcerptHeader: "--- Extrait pertinent [NUMBER] ---",
   similarExcerptFooter: "--- Fin de l'extrait ---",
+  futureOutlinePrompt: '''
+Vous êtes un maître planificateur d'histoires.
+Voici le concept du roman :
+- Titre : [NOVEL_TITLE]
+- Genre : [NOVEL_GENRE]
+- Spécifications : [NOVEL_SPECIFICATIONS]
+
+Voici le résumé de ce qui s'est déjà passé (le "Roadmap") :
+<Roadmap du Passé>
+[CURRENT_ROADMAP]
+</Roadmap du Passé>
+
+Votre tâche est de créer un **plan directeur (sommaire)** pour les **10 prochains chapitres**.
+Le plan doit être une liste de 10 points, chaque point étant une **phrase unique et concise** décrivant l'événement principal ou le développement de ce chapitre.
+Le rythme doit être **lent et naturel**, à la manière d'un roman humain. Développez un seul arc narratif de manière progressive, pas 10 mini-histoires.
+
+Format de sortie OBLIGATOIRE (uniquement la liste) :
+1. [Phrase pour le Chapitre N+1]
+2. [Phrase pour le Chapitre N+2]
+...
+10. [Phrase pour le Chapitre N+10]
+''',
+  futureOutlineHeader: "Plan directeur des 10 prochains chapitres (fil rouge) :",
+  futureOutlinePriorityRule: "\n**Règle de priorité** : Ce plan est votre fil rouge. MAIS, s'il entre en conflit avec la suite logique de la phrase/chapitre précédent, **donnez toujours la priorité à la suite logique** (le contexte FAISS).",
   // --- FIN MODIFICATION ---
 );
 
@@ -368,10 +425,35 @@ Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR
   titleChapterSuffix: '',
   contextNotAvailable: "No hay contexto disponible.",
   firstChapterContext: "Este es el primer capítulo.",
+  
   // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Plan de la historia (Resumen general de la historia hasta ahora)",
   similarExcerptHeader: "--- Extracto relevante [NUMBER] ---",
   similarExcerptFooter: "--- Fin del extracto ---",
+  futureOutlinePrompt: '''
+Eres un maestro planificador de historias.
+Aquí está el concepto de la novela:
+- Título: [NOVEL_TITLE]
+- Género: [NOVEL_GENRE]
+- Especificaciones: [NOVEL_SPECIFICATIONS]
+
+Aquí está el resumen de lo que ya ha sucedido (el "Roadmap"):
+<Roadmap Pasado>
+[CURRENT_ROADMAP]
+</Roadmap Pasado>
+
+Tu tarea es crear un **esquema de la trama (sumario)** para los **próximos 10 capítulos**.
+El plan debe ser una lista de 10 puntos, siendo cada punto una **única oración concisa** que describa el evento principal o desarrollo de ese capítulo.
+El ritmo debe ser **lento y natural**, como el de una novela humana. Desarrolla un solo arco argumental de forma progresiva, no 10 mini-historias.
+
+Formato de salida OBLIGATORIO (solo la lista):
+1. [Frase para el Capítulo N+1]
+2. [Frase para el Capítulo N+2]
+...
+10. [Frase para el Capítulo N+10]
+''',
+  futureOutlineHeader: "Esquema de la trama para los próximos 10 capítulos (hilo conductor):",
+  futureOutlinePriorityRule: "\n**Regla de prioridad**: Este esquema es tu hilo conductor. SIN EMBARGO, si entra en conflicto con la continuación lógica de la frase/capítulo anterior, **siempre prioriza la continuación lógica** (el contexto FAISS).",
   // --- FIN MODIFICATION ---
 );
 
@@ -425,10 +507,35 @@ Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À 
   titleChapterSuffix: '',
   contextNotAvailable: "Nessun contesto disponibile.",
   firstChapterContext: "Questo è il primo capitolo.",
+  
   // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Piano della storia (Riassunto generale della storia finora)",
   similarExcerptHeader: "--- Estratto pertinente [NUMBER] ---",
   similarExcerptFooter: "--- Fine dell'estratto ---",
+  futureOutlinePrompt: '''
+Sei un maestro pianificatore di storie.
+Ecco il concetto del romanzo:
+- Titolo: [NOVEL_TITLE]
+- Genere: [NOVEL_GENRE]
+- Specifiche: [NOVEL_SPECIFICATIONS]
+
+Ecco il riassunto di ciò che è già accaduto (la "Roadmap"):
+<Roadmap Passata>
+[CURRENT_ROADMAP]
+</Roadmap Passata>
+
+Il tuo compito è creare una **bozza della trama (sommario)** per i **prossimi 10 capitoli**.
+Il piano deve essere un elenco di 10 punti, ogni punto è una **singola frase concisa** che descrive l'evento principale o lo sviluppo di quel capitolo.
+Il ritmo deve essere **lento e naturale**, come quello di un romanzo umano. Sviluppa un singolo arco narrativo in modo progressivo, non 10 mini-storie.
+
+Formato di output OBBLIGATORIO (solo l'elenco):
+1. [Frase per il Capitolo N+1]
+2. [Frase per il Capitolo N+2]
+...
+10. [Frase per il Capitolo N+10]
+''',
+  futureOutlineHeader: "Bozza della trama per i prossimi 10 capitoli (filo conduttore):",
+  futureOutlinePriorityRule: "\n**Regola di priorità**: Questa bozza è il tuo filo conduttore. TUTTAVIA, se è in conflitto con la continuazione logica della frase/capitolo precedente, **dai sempre la priorità alla continuazione logica** (il contesto FAISS).",
   // --- FIN MODIFICATION ---
 );
 
@@ -482,10 +589,35 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
   titleChapterSuffix: ' 장',
   contextNotAvailable: "사용 가능한 문맥 없음.",
   firstChapterContext: "이것은 첫 번째 장입니다.",
+  
   // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "이야기 계획 (지금까지의 이야기 전체 요약)",
   similarExcerptHeader: "--- 관련 발췌 [NUMBER] ---",
   similarExcerptFooter: "--- 발췌 종료 ---",
+  futureOutlinePrompt: '''
+당신은 마스터 스토리 플래너입니다.
+소설의 컨셉은 다음과 같습니다:
+- 제목: [NOVEL_TITLE]
+- 장르: [NOVEL_GENRE]
+- 사양: [NOVEL_SPECIFICATIONS]
+
+이미 일어난 일의 요약(로드맵)입니다:
+<과거 로드맵>
+[CURRENT_ROADMAP]
+</과거 로드맵>
+
+당신의 임무는 **다음 10개 챕터**의 **줄거리 개요(요약)**를 만드는 것입니다.
+계획은 10개의 항목으로 구성되어야 하며, 각 항목은 해당 챕터의 주요 사건이나 전개를 설명하는 **간결한 한 문장**이어야 합니다.
+속도는 인간이 쓴 소설처럼 **느리고 자연스러워야** 합니다. 10개의 미니 스토리가 아닌, 하나의 스토리 아크를 점진적으로 발전시키십시오.
+
+필수 출력 형식 (목록만):
+1. [챕터 N+1 문장]
+2. [챕터 N+2 문장]
+...
+10. [챕터 N+10 문장]
+''',
+  futureOutlineHeader: "향후 10개 챕터의 줄거리 개요 (가이드라인):",
+  futureOutlinePriorityRule: "\n**우선순위 규칙**: 이 개요는 당신의 가이드라인입니다. 하지만, 이전 문장/챕터의 논리적 연속과 충돌하는 경우, **항상 논리적 연속을 우선**하십시오 (FAISS 컨텍스트).",
   // --- FIN MODIFICATION ---
 );
 
@@ -600,9 +732,34 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
   titleChapterSuffix: '章',
   contextNotAvailable: "特に指定なし",
   firstChapterContext: "これは最初の章です。",
+
   // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "物語の計画（これまでの物語の全体的な概要）",
   similarExcerptHeader: "--- 関連する抜粋 [NUMBER] ---",
   similarExcerptFooter: "--- 抜粋終了 ---",
+  futureOutlinePrompt: '''
+あなたは熟練のストーリープランナーです。
+以下は小説のコンセプトです：
+- タイトル：[NOVEL_TITLE]
+- ジャンル：[NOVEL_GENRE]
+- 仕様：[NOVEL_SPECIFICATIONS]
+
+以下は、すでに起こったことの要約（ロードマップ）です：
+<過去のロードマップ>
+[CURRENT_ROADMAP]
+</過去のロードマップ>
+
+あなたの仕事は、**次の10章分**の**プロット概要（目次）**を作成することです。
+計画は10個の箇条書きリストである必要があり、各項目はその章の主要な出来事や展開を説明する**簡潔な一文**でなければなりません。
+ペースは、人間が書いた小説のように**遅く、自然**である必要があります。10個のミニアニメではなく、一つのストーリーアークを徐々に展開してください。
+
+必須出力フォーマット（リストのみ）：
+1. [チャプターN+1の文]
+2. [チャプターN+2の文]
+...
+10. [チャプターN+10の文]
+''',
+  futureOutlineHeader: "次の10章のプロット概要（導きの糸）：",
+  futureOutlinePriorityRule: "\n**優先ルール**：この概要はあなたの導きの糸です。しかし、前の文/章の論理的な続きと矛盾する場合は、**常に論a的な続きを最優先**してください（FAISSコンテキスト）。",
   // --- FIN MODIFICATION ---
 );

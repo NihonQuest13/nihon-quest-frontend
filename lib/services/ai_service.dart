@@ -58,6 +58,7 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
     }
   }
 
+  // --- MODIFICATION : Ajout de futureOutline ---
   final String prompt = AIService._buildChapterPrompt(
     novel: novel,
     isFirstChapter: isFirstChapter,
@@ -68,16 +69,14 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
     similarChapters: relevantContextChapters,
     lastSentence: lastSentence,
     roadMap: novel.roadMap,
+    futureOutline: novel.futureOutline, // On passe le plan directeur
   );
+  // --- FIN MODIFICATION ---
   
   debugPrint("----- PROMPT PRÉPARÉ DANS L'ISOLATE -----");
   localContextService.dispose();
   return prompt;
 }
-
-// NOTE IMPORTANTE : La logique de mise à jour de la roadmap et de traduction
-// doit également être déplacée vers le backend pour la sécurité des clés API.
-// Pour l'instant, ces fonctions sont marquées comme non implémentées.
 
 class ApiException implements Exception {
   final String message;
@@ -105,6 +104,9 @@ class AIService {
   static String get _backendUrl => LocalContextService().baseUrl;
   
   static const String _defaultChapterModel = 'deepseek/deepseek-r1-0528:free';
+  // --- MODIFICATION : Ajout d'un modèle pour les tâches de planification ---
+  static const String _defaultPlannerModel = 'deepseek/deepseek-r1-0528:free'; // Ou un modèle plus puissant si besoin
+  // --- FIN MODIFICATION ---
 
   static final http.Client _client = http.Client();
 
@@ -114,7 +116,7 @@ class AIService {
     bool isFinalChapter = false,
   }) async {
     final Map<String, dynamic> data = {
-      'novel_json': jsonEncode(novel.toJson()),
+      'novel_json': jsonEncode(novel.toJson()), // toJson inclut maintenant futureOutline
       'isFirstChapter': isFirstChapter,
       'isFinalChapter': isFinalChapter,
       'backendUrl': _backendUrl,
@@ -206,24 +208,70 @@ class AIService {
     return controller.stream;
   }
 
+  // --- MODIFICATION : Ajout de la fonction de génération du plan directeur ---
+  /// Génère un plan de 10 chapitres ("sommaire") pour le futur du roman.
+  static Future<String> generateFutureOutline(Novel novel) async {
+    debugPrint("Génération du plan directeur futur pour le roman ${novel.title}...");
+    final languagePrompts = AIPrompts.getPromptsFor(novel.language);
+    
+    // Prépare le prompt
+    final String prompt = languagePrompts.futureOutlinePrompt
+        .replaceAll('[NOVEL_TITLE]', novel.title)
+        .replaceAll('[NOVEL_GENRE]', novel.genre)
+        .replaceAll('[NOVEL_SPECIFICATIONS]', novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications)
+        .replaceAll('[CURRENT_ROADMAP]', novel.roadMap ?? languagePrompts.firstChapterContext);
+
+    try {
+      // Appel à un endpoint de complétion simple (pas de streaming)
+      // NOTE : Assurez-vous que votre backend a un endpoint comme `/generate_completion`
+      final response = await _client.post(
+        Uri.parse('$_backendUrl/generate_completion'),
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode({
+          'prompt': prompt,
+          'model_id': _defaultPlannerModel, // Utilise le modèle de planification
+          'language': novel.language,
+        }),
+      ).timeout(const Duration(seconds: 120)); // 2 minutes de timeout
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        
+        // --- On nettoie les blocs <think> au cas où ---
+        final rawContent = data['content'] as String? ?? '';
+        final cleanedContent = _cleanAIResponse(rawContent);
+
+        debugPrint("Plan directeur généré : \n$cleanedContent");
+        return cleanedContent;
+      } else {
+        final errorMsg = _extractApiError(response);
+        debugPrint("Erreur API (${response.statusCode}) lors de la génération du plan: $errorMsg");
+        throw ApiException(errorMsg, statusCode: response.statusCode);
+      }
+    } catch (e) {
+      debugPrint("Erreur de connexion lors de la génération du plan: $e");
+      if (e is TimeoutException) {
+        throw ApiConnectionException("Le délai de la génération du plan a expiré (2 minutes).");
+      }
+      throw ApiException(e.toString());
+    }
+  }
+  // --- FIN MODIFICATION ---
+
+
   static Future<String> updateRoadMap(Novel novel) async {
-    // Cette fonction doit être migrée vers le backend pour la sécurité.
-    // Le 'roadmap_service.dart' appelle cette fonction, mais la logique
-    // de génération réelle doit être (et est) sur le backend.
-    // Ce message est un avertissement de développement.
-    debugPrint("AVERTISSEMENT: La mise à jour de la roadmap (logique IA) doit être sur le backend. L'appel est en cours...");
+    // Cette fonction est pour le résumé du PASSÉ. Elle reste inchangée.
+    // ... (votre code existant pour updateRoadMap) ...
+    debugPrint("Appel à updateRoadMap (résumé du PASSÉ)...");
     
-    // NOTE: Idéalement, cette fonction devrait appeler un endpoint backend
-    // comme '/update_roadmap' qui fait le vrai travail.
-    // Pour l'instant, le roadmap_service gère l'appel lui-même (ce qui est ok si le service appelle le backend).
-    
-    // On retourne le roadmap existant pour ne pas bloquer
-    return novel.roadMap ?? "La mise à jour de la roadmap est gérée par le backend.";
+    // Simule un appel backend pour l'exemple, car la logique n'est pas ici.
+    // Vous devriez appeler votre backend ici.
+    // Pour l'instant, on retourne l'ancien roadmap pour ne pas casser le code.
+    return novel.roadMap ?? "Le résumé du passé sera mis à jour par le backend.";
   }
 
   static Future<Map<String, String?>> getReadingAndTranslation(String word, SharedPreferences prefs) async {
-     // Cette fonction appelle maintenant le backend.
-     // L'ancien avertissement est trompeur. La migration A EU LIEU.
+     // ... (votre code existant pour getReadingAndTranslation, inchangé) ...
      debugPrint("Appel du backend pour traduction de : $word");
 
      try {
@@ -235,7 +283,6 @@ class AIService {
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
-          // Le backend renvoie { 'reading': '...', 'translation': '...', 'readingError': '...', 'translationError': '...' }
           return {
             'reading': data['reading'],
             'translation': data['translation'],
@@ -243,9 +290,7 @@ class AIService {
             'translationError': data['translationError'],
           };
         } else {
-          // Gérer les erreurs serveur (4xx, 5xx)
           final errorMsg = _extractApiError(response);
-          // ✅ CORRECTION ICI : Espace supprimé
           debugPrint("Erreur API (${response.statusCode}) lors de la traduction: $errorMsg");
           return {
             'reading': null,
@@ -255,7 +300,6 @@ class AIService {
           };
         }
      } catch (e) {
-        // Gérer les erreurs de connexion (timeout, pas de réseau)
         debugPrint("Erreur de connexion lors de la traduction: $e");
         return {
           'reading': null,
@@ -281,17 +325,12 @@ class AIService {
 
   /// Nettoie la réponse brute de l'IA en supprimant les blocs <think>...</think>.
   static String _cleanAIResponse(String rawText) {
-    // L'option 'dotAll: true' permet au '.' de correspondre aux sauts de ligne,
-    // ce qui est crucial car le bloc <think> est sur plusieurs lignes.
     final regex = RegExp(r'<think>.*?</think>', dotAll: true, caseSensitive: false);
-    
-    // Remplace toutes les occurrences trouvées par une chaîne vide et nettoie les espaces
     return rawText.replaceAll(regex, '').trim();
   }
 
   static Chapter extractTitleAndContent(String rawContent, int currentChapterCount, bool isFirstChapter, bool isFinalChapter, LanguagePrompts languagePrompts) {
     
-    // On nettoie le contenu brut AVANT tout traitement
     final String cleanedRawContent = _cleanAIResponse(rawContent);
 
     String defaultTitle;
@@ -304,10 +343,8 @@ class AIService {
     }
 
     String chapterTitle = defaultTitle;
-    // On utilise le contenu nettoyé ici
     String chapterContent = cleanedRawContent.trim();
 
-    // Et ici
     final lines = cleanedRawContent.trim().split('\n');
     if (lines.isNotEmpty) {
         final firstLine = lines.first.trim();
@@ -372,6 +409,7 @@ class AIService {
     List<String>? similarChapters,
     String? lastSentence,
     String? roadMap,
+    String? futureOutline, // --- MODIFICATION : Ajout du paramètre
   }) {
     String commonInstructions = languagePrompts.commonInstructions
         .replaceAll('[NOVEL_LEVEL]', novel.level)
@@ -382,16 +420,26 @@ class AIService {
     if (isFirstChapter) {
       String prompt = languagePrompts.firstChapterIntro
           .replaceAll('[NOVEL_TITLE]', novel.title);
-      return '''$prompt
-- Titre du roman: ${novel.title}
-- Niveau de langue: ${novel.level}
-- Genre: ${novel.genre}
-- Spécifications: ${novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications}
+      
+      // --- MODIFICATION : Ajout du plan futur MÊME pour le premier chapitre ---
+      final buffer = StringBuffer();
+      buffer.writeln(prompt);
+      buffer.writeln("- Titre du roman: ${novel.title}");
+      buffer.writeln("- Niveau de langue: ${novel.level}");
+      buffer.writeln("- Genre: ${novel.genre}");
+      buffer.writeln("- Spécifications: ${novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications}");
 
-$commonInstructions
+      if (futureOutline != null && futureOutline.isNotEmpty) {
+        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
+        buffer.writeln(futureOutline);
+        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
+      }
+      
+      buffer.writeln("\n$commonInstructions");
+      buffer.writeln(languagePrompts.outputFormatFirst);
+      return buffer.toString();
+      // --- FIN MODIFICATION ---
 
-${languagePrompts.outputFormatFirst}
-''';
     } else {
       final String intro = isFinalChapter
           ? languagePrompts.finalChapterIntro
@@ -405,30 +453,43 @@ ${languagePrompts.outputFormatFirst}
       
       final buffer = StringBuffer();
       buffer.writeln(languagePrompts.contextSectionHeader);
+      
+      // 1. Le résumé du PASSÉ
       if (roadMap != null && roadMap.isNotEmpty) {
-        // --- MODIFICATION : Utilisation de la variable de langue ---
         buffer.writeln("\n${languagePrompts.roadmapHeader}:");
-        // --- FIN MODIFICATION ---
         buffer.writeln(roadMap);
       }
+      
+      // 2. --- MODIFICATION : Le plan du FUTUR ---
+      if (futureOutline != null && futureOutline.isNotEmpty) {
+        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
+        buffer.writeln(futureOutline);
+        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
+      }
+      // --- FIN MODIFICATION ---
+
+      // 3. Le contexte IMMÉDIAT (le plus important)
       if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
         final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
         buffer.writeln("\n$header");
         buffer.writeln(lastChapterContent);
       }
+      
+      // 4. Le contexte pertinent (FAISS)
       if (similarChapters != null && similarChapters.isNotEmpty) {
         buffer.writeln("\n${languagePrompts.contextSimilarSectionHeader}");
         for (int i = 0; i < similarChapters.length; i++) {
-          // --- MODIFICATION : Utilisation des variables de langue ---
           final excerptHeader = languagePrompts.similarExcerptHeader.replaceAll("[NUMBER]", (i + 1).toString());
           buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
-          // --- FIN MODIFICATION ---
         }
       }
+      
+      // 5. La dernière phrase
       if(lastSentence != null && lastSentence.isNotEmpty) {
           buffer.writeln("\n${languagePrompts.contextLastSentenceHeader}");
           buffer.writeln('"$lastSentence"');
       }
+      
       buffer.writeln(languagePrompts.contextFollowInstruction);
       final String contextSection = buffer.toString();
 
