@@ -26,6 +26,12 @@ class LanguagePrompts {
   final String titleChapterSuffix;
   final String contextNotAvailable;
   final String firstChapterContext;
+  
+  // --- MODIFICATION : Ajout des nouveaux champs pour le contexte ---
+  final String roadmapHeader;
+  final String similarExcerptHeader; // Doit contenir [NUMBER]
+  final String similarExcerptFooter;
+  // --- FIN MODIFICATION ---
 
   const LanguagePrompts({
     required this.systemChapter,
@@ -52,6 +58,12 @@ class LanguagePrompts {
     required this.titleChapterSuffix,
     required this.contextNotAvailable,
     required this.firstChapterContext,
+    
+    // --- MODIFICATION : Ajout au constructeur ---
+    required this.roadmapHeader,
+    required this.similarExcerptHeader,
+    required this.similarExcerptFooter,
+    // --- FIN MODIFICATION ---
   });
 }
 
@@ -75,13 +87,14 @@ class AIPrompts {
 
 // --- SECTIONS DE TEXTE MODULAIRES (PARTAGÉES) ---
 
+// --- NUMÉROTATION MISE À JOUR ---
 const _showDontTellPrinciple = '''
 Core Writing Principle - "Show, Don't Tell":
-9.  **Do NOT summarize events**. Do not fast-forward the story. Focus on a single, significant scene or a short period of time, rather than trying to cover too much ground in one chapter.
-10. **Describe in detail**: Describe the atmosphere of places, characters' facial expressions, and sensory details (smells, sounds, textures).
-11. **Depict inner life**: Instead of stating a character's emotion directly (e.g., "He was sad"), **show** it through their actions, thoughts, and dialogue (e.g., "His shoulders slumped, and his gaze remained fixed on the floor.").
-12. **Pacing**: **Do not** rush the story. Take time for character psychology and world-building. Lay sufficient groundwork before major events.
-13. **Consistency**: Ensure characters' actions are consistent with their established personalities and motivations. Maintain the logical flow of the plot based on the context provided.
+10. **Do NOT summarize events**. Do not fast-forward the story. Focus on a single, significant scene or a short period of time, rather than trying to cover too much ground in one chapter.
+11. **Describe in detail**: Describe the atmosphere of places, characters' facial expressions, and sensory details (smells, sounds, textures).
+12. **Depict inner life**: Instead of stating a character's emotion directly (e.g., "He was sad"), **show** it through their actions, thoughts, and dialogue (e.g., "His shoulders slumped, and his gaze remained fixed on the floor.").
+13. **Pacing**: **Do not** rush the story. Take time for character psychology and world-building. Lay sufficient groundwork before major events.
+14. **Consistency**: Ensure characters' actions are consistent with their established personalities and motivations. Maintain the logical flow of the plot based on the context provided.
 ''';
 
 // --- PROMPTS PAR LANGUE ---
@@ -97,6 +110,13 @@ const _enRules = '''
  6.  Do not use any Markdown formatting (no bold, no italics). Do not use asterisks (*) or underscores (_) for emphasis.
  7.  **Dialogue Format**: **Always** use double quotation marks ("") to enclose dialogue. **Never** use em dashes (—) for dialogues.
  8.  **Writing Style**: The prose should resemble that of a published novel, not a script.
+ 
+ 9.  **Context Analysis (Fanfiction vs. Original)**: // --- NOUVELLE RÈGLE ---
+     - Before writing, determine if the "[NOVEL_SPECIFICATIONS]" field describes an **original story** or a **fanfiction** (based on an existing work: book, movie, game, etc.).
+     - If it is a **fanfiction**: Your priority is to respect the lore, characters, and plot of the original work. Use your knowledge of that work. Then, apply the user's specifications on top of that foundation.
+     - If it is an **original story**: Base your creation *strictly* on the specifications provided.
+ 
+ 15. **Paragraphs**: Structure the text with appropriate paragraphs. **Always** use a double line break (an empty line) between paragraphs for readability.
 ''';
 
 const LanguagePrompts _englishPrompts = LanguagePrompts(
@@ -176,6 +196,11 @@ Your response must only contain the text of the summary. Do NOT start your respo
   titleChapterSuffix: '',
   contextNotAvailable: "No context available.",
   firstChapterContext: "This is the first chapter.",
+  // --- MODIFICATION : Ajout des traductions ---
+  roadmapHeader: "Story Plan (Overall summary of the story so far)",
+  similarExcerptHeader: "--- Relevant Excerpt [NUMBER] ---",
+  similarExcerptFooter: "--- End of Excerpt ---",
+  // --- FIN MODIFICATION ---
 );
 
 
@@ -190,15 +215,23 @@ const _frRules = '''
  6.  N'utilisez aucun formatage Markdown (pas de gras, pas d'italique). N'utilisez pas d'astérisques (*) ou de tirets bas (_) pour l'emphase.
  7.  **Format des dialogues**: Utilisez **toujours** des guillemets français (« ») ou des guillemets doubles ("") pour encadrer les dialogues. **N'utilisez jamais** de tirets cadratins (—) pour les dialogues.
  8.  **Style d'écriture** : La prose doit ressembler à celle d'un roman publié, pas à un script.
+ 
+ 9.  **Analyse du Contexte (Fanfiction vs. Original)**: // --- NOUVELLE RÈGLE ---
+     - Avant d'écrire, déterminez si le champ "[NOVEL_SPECIFICATIONS]" décrit une **histoire originale** ou une **fanfiction** (basée sur une œuvre existante : livre, film, jeu, etc.).
+     - Si c'est une **fanfiction** : Votre priorité est de respecter l'univers, les personnages et l'histoire de l'œuvre de base. Utilisez vos connaissances sur cette œuvre. Appliquez ensuite les spécifications de l'utilisateur par-dessus cette base.
+     - Si c'est une **histoire originale** : N'inventez que ce qui est nécessaire et basez-vous *strictement* sur les spécifications fournies.
+
+ 15. **Paragraphes** : Structurez le texte avec des paragraphes appropriés. **Toujours** utiliser un double saut de ligne (une ligne vide) entre les paragraphes pour la lisibilité.
 ''';
 
+// --- NUMÉROTATION MISE À JOUR ---
 const _frShowDontTell = '''
 Principe d'écriture fondamental - "Montrer, ne pas dire" :
-9.  **Ne résumez PAS les événements**. Ne faites pas d'avance rapide dans l'histoire. Concentrez-vous sur une seule scène significative ou une courte période, plutôt que d'essayer de couvrir trop de terrain en un seul chapitre.
-10. **Décrivez en détail** : Décrivez l'atmosphère des lieux, les expressions faciales des personnages et les détails sensoriels (odeurs, sons, textures).
-11. **Dépeignez la vie intérieure** : Au lieu d'énoncer directement l'émotion d'un personnage (par ex., "Il était triste"), **montrez-la** à travers ses actions, ses pensées et ses dialogues (par ex., "Ses épaules s'affaissèrent et son regard resta fixé sur le sol.").
-12. **Rythme** : **Ne** précipitez **pas** l'histoire. Prenez du temps pour la psychologie des personnages et la construction du monde. Posez des bases suffisantes avant les événements majeurs.
-13. **Cohérence** : Assurez-vous que les actions des personnages sont cohérentes avec leur personnalité et leurs motivations établies. Maintenez le déroulement logique de l'intrigue en fonction du contexte fourni.
+10. **Ne résumez PAS les événements**. Ne faites pas d'avance rapide dans l'histoire. Concentrez-vous sur une seule scène significative ou une courte période, plutôt que d'essayer de couvrir trop de terrain en un seul chapitre.
+11. **Décrivez en détail** : Décrivez l'atmosphère des lieux, les expressions faciales des personnages et les détails sensoriels (odeurs, sons, textures).
+12. **Dépeignez la vie intérieure** : Au lieu d'énoncer directement l'émotion d'un personnage (par ex., "Il était triste"), **montrez-la** à travers ses actions, ses pensées et ses dialogues (par ex., "Ses épaules s'affaissèrent et son regard resta fixé sur le sol.").
+13. **Rythme** : **Ne** précipitez **pas** l'histoire. Prenez du temps pour la psychologie des personnages et la construction du monde. Posez des bases suffisantes avant les événements majeurs.
+14. **Cohérence** : Assurez-vous que les actions des personnages sont cohérentes avec leur personnalité et leurs motivations établies. Maintenez le déroulement logique de l'intrigue en fonction du contexte fourni.
 ''';
 
 const LanguagePrompts _frenchPrompts = LanguagePrompts(
@@ -278,6 +311,11 @@ Votre réponse ne doit contenir que le texte du résumé. Ne commencez PAS votre
   titleChapterSuffix: '',
   contextNotAvailable: "Pas de contexte disponible.",
   firstChapterContext: "C'est le premier chapitre.",
+  // --- MODIFICATION : Ajout des traductions ---
+  roadmapHeader: "Plan de l'histoire (Résumé général de l'histoire jusqu'à présent)",
+  similarExcerptHeader: "--- Extrait pertinent [NUMBER] ---",
+  similarExcerptFooter: "--- Fin de l'extrait ---",
+  // --- FIN MODIFICATION ---
 );
 
 // Espagnol (Spanish)
@@ -295,13 +333,20 @@ const LanguagePrompts _spanishPrompts = LanguagePrompts(
  6.  No uses ningún formato Markdown (negrita, cursiva).
  7.  **Formato de diálogo**: Usa **siempre** comillas dobles ("") para los diálogos.
  8.  **Estilo de escritura**: La prosa debe parecerse a la de una novela publicada, no a un guion.
+ 
+ 9.  **Análisis de Contexto (Fanfiction vs. Original)**: // --- NOUVELLE RÈGLE ---
+     - Antes de escribir, determina si el campo "[NOVEL_SPECIFICATIONS]" describe una **historia original** o una **fanfiction** (basada en una obra existente: libro, película, juego, etc.).
+     - Si es una **fanfiction**: Tu prioridad es respetar el lore, los personajes y la trama de la obra original. Utiliza tu conocimiento de esa obra. Luego, aplica las especificaciones del usuario sobre esa base.
+     - Si es una **historia original**: Basa tu creación *estrictamente* en las especificaciones proporcionadas.
+ 
+ 15. **Párrafos**: Estructura el texto con párrafos adecuados. **Siempre** usa un doble salto de línea (una línea vacía) entre párrafos para facilitar la lectura.
 
-Principio de escritura - "Mostrar, no contar":
-9.  **NO resumas los eventos**. Concéntrate en una sola escena significativa.
-10. **Describe en detalle**: La atmósfera, las expresiones faciales, los detalles sensoriales.
-11. **Representa la vida interior**: Muestra las emociones a través de acciones, no las nombres directamente.
-12. **Ritmo**: No apresures la historia. Tómate tiempo para la psicología de los personajes.
-13. **Coherencia**: Asegúrate de que las acciones de los personajes sean coherentes.
+Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR ---
+10. **NO resumas los eventos**. Concéntrate en una sola escena significativa.
+11. **Describe en detalle**: La atmósfera, las expresiones faciales, los detalles sensoriales.
+12. **Representa la vida interior**: Muestra las emociones a través de acciones, no las nombres directamente.
+13. **Ritmo**: No apresures la historia. Tómate tiempo para la psicología de los personajes.
+14. **Coherencia**: Asegúrate de que las acciones de los personajes sean coherentes.
 ''',
   firstChapterIntro: 'Crea el **primer capítulo** de una nueva novela en [NOVEL_LANGUAGE] con las siguientes características:',
   nextChapterIntro: 'Escribe el **siguiente capítulo (Capítulo [NEXT_CHAPTER_NUMBER])** para la novela "[NOVEL_TITLE]".',
@@ -323,6 +368,11 @@ Principio de escritura - "Mostrar, no contar":
   titleChapterSuffix: '',
   contextNotAvailable: "No hay contexto disponible.",
   firstChapterContext: "Este es el primer capítulo.",
+  // --- MODIFICATION : Ajout des traductions ---
+  roadmapHeader: "Plan de la historia (Resumen general de la historia hasta ahora)",
+  similarExcerptHeader: "--- Extracto relevante [NUMBER] ---",
+  similarExcerptFooter: "--- Fin del extracto ---",
+  // --- FIN MODIFICATION ---
 );
 
 // Italien (Italian)
@@ -341,12 +391,19 @@ const LanguagePrompts _italianPrompts = LanguagePrompts(
  7.  **Formato dei dialoghi**: Usa **sempre** le virgolette doppie ("") per i dialoghi.
  8.  **Stile di scrittura**: La prosa deve assomigliare a quella di un romanzo pubblicato, non a una sceneggiatura.
 
-Principio di scrittura - "Mostra, non raccontare":
-9.  **NON riassumere gli eventi**. Concentrati su una singola scena significativa.
-10. **Descrivi in dettaglio**: L'atmosfera, le espressioni facciali, i dettagli sensoriali.
-11. **Rappresenta la vita interiore**: Mostra le emozioni attraverso le azioni, non nominarle direttamente.
-12. **Ritmo**: Non affrettare la storia. Prenditi tempo per la psicologia dei personaggi.
-13. **Coerenza**: Assicurati che le azioni dei personaggi siano coerenti.
+ 9.  **Analisi del Contesto (Fanfiction vs. Originale)**: // --- NOUVELLE RÈGLE ---
+     - Prima di scrivere, determina se il campo "[NOVEL_SPECIFICATIONS]" descrive una **storia originale** o una **fanfiction** (basata su un'opera esistente: libro, film, gioco, ecc.).
+     - Se è una **fanfiction**: La tua priorità è rispettare la lore, i personaggi e la trama dell'opera originale. Usa la tua conoscenza di quell'opera. Quindi, applica le specifiche dell'utente su quella base.
+     - Se è una **storia originale**: Basa la tua creazione *strettamente* sulle specifiche fornite.
+ 
+ 15. **Paragrafi**: Struttura il testo con paragrafi appropriati. **Sempre** usare un doppio a capo (una riga vuota) tra i paragrafi per la leggibilità.
+
+Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À JOUR ---
+10. **NON riassumere gli eventi**. Concentrati su una singola scena significativa.
+11. **Descrivi in dettaglio**: L'atmosfera, le espressioni facciali, i dettagli sensoriali.
+12. **Rappresenta la vita interiore**: Mostra le emozioni attraverso le azioni, non nominarle direttamente.
+13. **Ritmo**: Non affrettare la storia. Prenditi tempo per la psicologia dei personaggi.
+14. **Coerenza**: Assicurati che le azioni dei personaggi siano coerenti.
 ''',
   firstChapterIntro: 'Crea il **primo capitolo** di un nuovo romanzo in [NOVEL_LANGUAGE] con le seguenti caratteristiche:',
   nextChapterIntro: 'Scrivi il **capitolo successivo (Capitolo [NEXT_CHAPTER_NUMBER])** per il romanzo "[NOVEL_TITLE]".',
@@ -368,6 +425,11 @@ Principio di scrittura - "Mostra, non raccontare":
   titleChapterSuffix: '',
   contextNotAvailable: "Nessun contesto disponibile.",
   firstChapterContext: "Questo è il primo capitolo.",
+  // --- MODIFICATION : Ajout des traductions ---
+  roadmapHeader: "Piano della storia (Riassunto generale della storia finora)",
+  similarExcerptHeader: "--- Estratto pertinente [NUMBER] ---",
+  similarExcerptFooter: "--- Fine dell'estratto ---",
+  // --- FIN MODIFICATION ---
 );
 
 // Coréen (Korean)
@@ -386,12 +448,19 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
  7.  **대화 형식**: 대화에는 **항상** 큰따옴표("")를 사용하십시오.
  8.  **글쓰기 스타일**: 대본이 아닌 출판된 소설과 같은 산문이어야 합니다.
 
-핵심 글쓰기 원칙 - "말하지 말고 보여주기":
-9.  **사건을 요약하지 마십시오**. 한 장면에 집중하십시오.
-10. **자세히 묘사하십시오**: 분위기, 표정, 감각적 세부 사항.
-11. **내면의 삶을 묘사하십시오**: 행동을 통해 감정을 보여주십시오.
-12. **속도**: 이야기를 서두르지 마십시오.
-13. **일관성**: 등장인물의 행동이 일관성이 있는지 확인하십시오.
+ 9.  **문맥 분석 (팬픽션 vs. 오리지널)**: // --- NOUVELLE RÈGLE ---
+     - 작성하기 전에 "[NOVEL_SPECIFICATIONS]" 필드가 **오리지널 스토리**인지 또는 기존 작품(책, 영화, 게임 등)에 기반한 **팬픽션**인지 확인하십시오.
+     - **팬픽션**인 경우: 원작의 설정, 캐릭터, 줄거리를 존중하는 것을 최우선으로 합니다. 해당 작품에 대한 지식을 활용하십시오. 그런 다음 그 기반 위에 사용자의 사양을 적용하십시오.
+     - **오리지널 스토리**인 경우: 제공된 사양에 *엄격하게* 기반하여 창작하십시오.
+ 
+ 15. **단락**: 텍스트를 적절한 단락으로 구성하십시오. 가독성을 위해 단락 사이에 **항상** 이중 줄 바꿈(빈 줄)을 사용하십시오.
+
+핵심 글쓰기 원칙 - "말하지 말고 보여주기": // --- NUMÉROTATION MISE À JOUR ---
+10. **사건을 요약하지 마십시오**. 한 장면에 집중하십시오.
+11. **자세히 묘사하십시오**: 분위기, 표정, 감각적 세부 사항.
+12. **내면의 삶을 묘사하십시오**: 행동을 통해 감정을 보여주십시오.
+13. **속도**: 이야기를 서두르지 마십시오.
+14. **일관성**: 등장인물의 행동이 일관성이 있는지 확인하십시오.
 ''',
   firstChapterIntro: '다음 특성을 가진 [NOVEL_LANGUAGE]의 새 소설의 **첫 번째 장**을 만드십시오:',
   nextChapterIntro: '소설 "[NOVEL_TITLE]"의 **다음 장(챕터 [NEXT_CHAPTER_NUMBER])**을 작성하십시오.',
@@ -413,6 +482,11 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
   titleChapterSuffix: ' 장',
   contextNotAvailable: "사용 가능한 문맥 없음.",
   firstChapterContext: "이것은 첫 번째 장입니다.",
+  // --- MODIFICATION : Ajout des traductions ---
+  roadmapHeader: "이야기 계획 (지금까지의 이야기 전체 요약)",
+  similarExcerptHeader: "--- 관련 발췌 [NUMBER] ---",
+  similarExcerptFooter: "--- 발췌 종료 ---",
+  // --- FIN MODIFICATION ---
 );
 
 // Japonais
@@ -428,16 +502,24 @@ const _jpRules = '''
  8.  マークダウン書式（太字、斜体など）は一切使用しないでください。強調のためにアスタリスク（*）やアンダースコア（_）を使用しないでください。
  9.  **会話のフォーマット**: 会話には**必ず**引用符（「」）を使用してください。ダッシュ（—）は絶対に使用しないでください。
  10. **文体**: 脚本ではなく、出版された小説のような散文を目指してください。
+
+ 11. **コンテキスト分析（ファンフィクション vs. オリジナル）**: // --- NOUVELLE RÈGLE ---
+     - 執筆開始前に、「[NOVEL_SPECIFICATIONS]」の内容が**オリジナルストーリー**か、既存の作品（書籍、映画、ゲーム等）に基づいた**ファンフィクション**かを判断してください。
+     - **ファンフィクションの場合**: あなたの知識に基づき、原作の世界観、キャラクター、ストーリーを尊重することを最優先とします。その上で、ユーザーの指定を適用してください。
+     - **オリジナルストーリーの場合**: 提供された仕様に**厳密に**基づいて世界観やキャラクターを作成してください。
+
+ 18. **段落**: 読みやすさのために、適切な段落（パラグラフ）を設けてください。段落と段落の間には**必ず**空行（改行）を一つ入れてください。
 ''';
 
+// --- NUMÉROTATION MISE À JOUR --- (Commence à 12 au lieu de 11)
 const _jpShowDontTell = '''
 執筆の最重要原則 - 「語るな、見せろ」：
-11. **出来事を要約しない**：物語を早送りしないでください。一つの章で多くの出来事を詰め込むのではなく、一つの重要なシーンや短い時間軸に焦点を当ててください。
-12. **詳細な描写**：場所の雰囲気、キャラクターの表情、五感（匂い、音、触感）を詳細に描写してください。
-13. **内面の描写**：キャラクターの感情を直接的に「彼は悲しかった」と書くのではなく、その行動、思考、対話を通して感情を**示して**ください。（例：「彼の肩は落ち、視線は床に固定されたままだった。」）
-14. **自然なペース配分**：物語を**急がせる必要はありません**。キャラクターの心理描写や世界の描写にも時間をかけてください。重要な出来事の前に十分な布石を打ってください。
-15. **キャラクターとプロットの一貫性**：登場人物の性格、動機、過去の行動と矛盾しないように描写してください。提供されたコンテキストや以前の章との論理的な流れを維持してください。
-16. **使用言語**: 回答は**絶対に日本語**で記述。他言語不可。
+12. **出来事を要約しない**：物語を早送りしないでください。一つの章で多くの出来事を詰め込むのではなく、一つの重要なシーンや短い時間軸に焦点を当ててください。
+13. **詳細な描写**：場所の雰囲気、キャラクターの表情、五感（匂い、音、触感）を詳細に描写してください。
+14. **内面の描写**：キャラクターの感情を直接的に「彼は悲しかった」と書くのではなく、その行動、思考、対話を通して感情を**示して**ください。（例：「彼の肩は落ち、視線は床に固定されたままだった。」）
+15. **自然なペース配分**：物語を**急がせる必要はありません**。キャラクターの心理描写や世界の描写にも時間をかけてください。重要な出来事の前に十分な布石を打ってください。
+16. **キャラクターとプロットの一貫性**：登場人物の性格、動機、過去の行動と矛盾しないように描写してください。提供されたコンテキストや以前の章との論理的な流れを維持してください。
+17. **使用言語**: 回答は**絶対に日本語**で記述。他言語不可。
 ''';
 
 const LanguagePrompts _japanesePrompts = LanguagePrompts(
@@ -518,4 +600,9 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
   titleChapterSuffix: '章',
   contextNotAvailable: "特に指定なし",
   firstChapterContext: "これは最初の章です。",
+  // --- MODIFICATION : Ajout des traductions ---
+  roadmapHeader: "物語の計画（これまでの物語の全体的な概要）",
+  similarExcerptHeader: "--- 関連する抜粋 [NUMBER] ---",
+  similarExcerptFooter: "--- 抜粋終了 ---",
+  // --- FIN MODIFICATION ---
 );

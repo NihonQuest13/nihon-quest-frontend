@@ -279,7 +279,6 @@ class AIService {
     return response.reasonPhrase ?? 'Erreur inconnue';
   }
 
-  // --- MODIFICATION : AJOUT DE LA FONCTION DE NETTOYAGE ---
   /// Nettoie la réponse brute de l'IA en supprimant les blocs <think>...</think>.
   static String _cleanAIResponse(String rawText) {
     // L'option 'dotAll: true' permet au '.' de correspondre aux sauts de ligne,
@@ -289,14 +288,11 @@ class AIService {
     // Remplace toutes les occurrences trouvées par une chaîne vide et nettoie les espaces
     return rawText.replaceAll(regex, '').trim();
   }
-  // --- FIN DE LA MODIFICATION ---
 
   static Chapter extractTitleAndContent(String rawContent, int currentChapterCount, bool isFirstChapter, bool isFinalChapter, LanguagePrompts languagePrompts) {
     
-    // --- MODIFICATION : APPEL DE LA FONCTION DE NETTOYAGE ---
     // On nettoie le contenu brut AVANT tout traitement
     final String cleanedRawContent = _cleanAIResponse(rawContent);
-    // --- FIN DE LA MODIFICATION ---
 
     String defaultTitle;
     if (isFirstChapter) {
@@ -410,7 +406,9 @@ ${languagePrompts.outputFormatFirst}
       final buffer = StringBuffer();
       buffer.writeln(languagePrompts.contextSectionHeader);
       if (roadMap != null && roadMap.isNotEmpty) {
-        buffer.writeln("\nPlan de l'histoire (Résumé général de l'histoire jusqu'à présent) :");
+        // --- MODIFICATION : Utilisation de la variable de langue ---
+        buffer.writeln("\n${languagePrompts.roadmapHeader}:");
+        // --- FIN MODIFICATION ---
         buffer.writeln(roadMap);
       }
       if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
@@ -421,7 +419,10 @@ ${languagePrompts.outputFormatFirst}
       if (similarChapters != null && similarChapters.isNotEmpty) {
         buffer.writeln("\n${languagePrompts.contextSimilarSectionHeader}");
         for (int i = 0; i < similarChapters.length; i++) {
-          buffer.writeln("--- Extrait pertinent ${i + 1} ---\n${similarChapters[i]}\n--- Fin de l'extrait ---");
+          // --- MODIFICATION : Utilisation des variables de langue ---
+          final excerptHeader = languagePrompts.similarExcerptHeader.replaceAll("[NUMBER]", (i + 1).toString());
+          buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
+          // --- FIN MODIFICATION ---
         }
       }
       if(lastSentence != null && lastSentence.isNotEmpty) {
