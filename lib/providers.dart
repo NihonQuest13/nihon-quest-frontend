@@ -1,4 +1,4 @@
-// lib/providers.dart (CORRIGÉ - Sans relation chapters)
+// lib/providers.dart (CORRIGÉ - Requête unique)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -108,32 +108,26 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       return state.value!;
     }
 
-    debugPrint("[NovelsProvider] Récupération depuis Supabase...");
+    debugPrint("[NovelsProvider] Récupération depuis Supabase (requête unique)...");
     
-    // ✅ CORRECTION 1 : Récupérer uniquement les novels SANS la relation chapters
+    // ✅ =================================================================
+    // ✅ CORRECTION : Revenir à une requête unique.
+    // On sélectionne 'novels' et on demande à Supabase d'intégrer
+    // tous les 'chapters' qui correspondent.
+    // ✅ =================================================================
     final novelsData = await supabase
         .from('novels')
-        .select('*') // Plus de chapters(*)
+        .select('*, chapters(*)') // <-- LA MODIFICATION EST ICI
         .eq('user_id', userId)
-        .order('updated_at', ascending: false);
+        .order('updated_at', ascending: false)
+        // On demande aussi de trier les chapitres intégrés
+        .order('created_at', referencedTable: 'chapters', ascending: true); 
     
-    // ✅ CORRECTION 2 : Récupérer les chapters séparément pour chaque roman
-    final novels = <Novel>[];
-    for (final novelRow in novelsData) {
-      final novelId = novelRow['id'];
-      
-      // Récupérer les chapitres pour ce roman
-      final chaptersData = await supabase
-          .from('chapters')
-          .select('*')
-          .eq('novel_id', novelId)
-          .order('created_at', ascending: true);
-      
-      // Ajouter les chapitres au JSON du roman
-      novelRow['chapters'] = chaptersData;
-      
-      novels.add(Novel.fromJson(novelRow));
-    }
+    // ✅ Le parsing fonctionne car 'Novel.fromJson' est déjà conçu
+    // pour lire une liste 'chapters' dans le JSON.
+    final novels = novelsData.map((novelRow) {
+      return Novel.fromJson(novelRow);
+    }).toList();
     
     _lastFetch = now;
     return _sortNovels(novels);
@@ -185,10 +179,12 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data([novel, ...currentNovels]);
 
     try {
-      // Insérer le roman
+      // 1. Insérer le roman
       await supabase.from('novels').insert(novelData);
       
-      // Insérer les chapitres séparément
+      // 2. Insérer les chapitres
+      // (Cette partie doit rester car on ne peut pas 'créer' 
+      // un roman et ses chapitres en une seule requête)
       if (novel.chapters.isNotEmpty) {
         final chaptersData = novel.chapters.map((chapter) {
           final chapterJson = chapter.toJson();
@@ -219,13 +215,13 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data(updatedList);
 
     try {
-      // Mettre à jour le roman
+      // 1. Mettre à jour le roman
       await supabase
         .from('novels')
         .update(novelData)
         .eq('id', novel.id);
       
-      // Supprimer les anciens chapitres et réinsérer les nouveaux
+      // 2. Mettre à jour les chapitres (en supprimant et recréant)
       await supabase.from('chapters').delete().eq('novel_id', novel.id);
       
       if (novel.chapters.isNotEmpty) {
@@ -264,7 +260,8 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data(currentNovels.where((n) => n.id != novelId).toList());
     
     try {
-      // Les chapitres seront supprimés automatiquement via CASCADE
+      // En supprimant le roman, les chapitres liés 
+      // seront supprimés aussi (si 'on delete cascade' est activé sur la clé étrangère)
       await supabase.from('novels').delete().eq('id', novelId);
       _lastFetch = DateTime.now();
     } catch (e) {
