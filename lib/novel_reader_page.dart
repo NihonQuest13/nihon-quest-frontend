@@ -44,9 +44,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   final Map<int, ScrollController> _scrollControllers = {};
   final ValueNotifier<double> _chapterProgressNotifier = ValueNotifier(0.0);
   bool _isGeneratingNextChapter = false;
-  // --- MODIFICATION: Nouvelle variable d'état ---
-  bool _isCheckingOutline = false;
-  // ----------------------------------------------
   String _selectedWord = '';
   bool _isLoadingTranslation = false;
   Map<String, String?>? _translationResult; // Garde les résultats ou les erreurs
@@ -85,6 +82,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _editingTitleController.dispose();
     _editingContentController.dispose();
+    _editingScrollController.dispose();
 
     _pageController.removeListener(_onPageChanged);
     if (mounted && _pageController.hasClients) {
@@ -169,7 +167,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   // --- FIN DE LA GESTION DE TRADUCTION ---
 
 
-  // ... (Fonctions de gestion de l'état, des préférences et des interactions utilisateur)
+  // ... (Tout le reste du fichier NovelReaderPageState reste identique)
+  // _onPageChanged, _attachScrollListenerToCurrentPage, _updateScrollProgress,
   void _onPageChanged() {
       if (!_pageController.hasClients || _pageController.page == null) return;
       final newPage = _pageController.page!.round();
@@ -404,11 +403,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     });
   }
 
-  // --- MODIFICATION: Logique de vérification du plan (outline) ajoutée/modifiée ---
   Future<void> _guardedGenerateChapter(Novel novel) async {
-    // Vérification initiale pour le NovelId est implicite via le provider et le novel non nul
-    // (Dans un cas réel, on ajouterait 'if (novel == null) return;' au début si le provider pouvait retourner null ici)
-
     final syncStatus = ref.read(syncQueueStatusProvider);
     if (syncStatus != SyncQueueStatus.idle) {
       String message = syncStatus == SyncQueueStatus.processing
@@ -419,60 +414,13 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       return;
     }
 
-    // --- MODIFICATION: Prise en compte de _isCheckingOutline dans le gardien ---
-    if (_isGeneratingNextChapter || _isCheckingOutline) {
-      final statusMessage = _isCheckingOutline
-          ? "Préparation du plan en cours..."
-          : "L'écrivain est déjà en train de rédiger, patience !";
-      _showSnackbarMessage(statusMessage, Colors.orangeAccent);
+    if (_isGeneratingNextChapter) {
+      _showSnackbarMessage("L'écrivain est déjà en train de rédiger, patience !", Colors.orangeAccent);
       return;
     }
-    // --------------------------------------------------------------------------
 
-    // VÉRIFICATION CLÉ: Si c'est le premier chapitre ET que le plan manque
-    if (novel.chapters.isEmpty && (novel.futureOutline == null || novel.futureOutline!.isEmpty)) {
-      if (mounted) {
-        setState(() => _isCheckingOutline = true); // --- MODIFICATION ---
-      }
-
-      _showSnackbarMessage("Préparation du plan de l'intrigue...", Colors.blueAccent, durationSeconds: 4);
-
-      try {
-        // Appelle le service pour générer/mettre à jour le plan
-        final roadmapService = ref.read(roadmapServiceProvider);
-        // Utilisation de widget.novelId car triggerFutureOutlineUpdateIfNeeded pourrait nécessiter l'ID
-        await roadmapService.triggerFutureOutlineUpdateIfNeeded(novel, context); // --- MODIFICATION ---
-
-        // Important: Après l'attente, elle récupère à nouveau l'objet Novel mis à jour
-        novel = (await _getNovelFromProvider()) ?? novel; // --- MODIFICATION ---
-
-      } catch (e) {
-        debugPrint("Erreur lors de la génération du plan initial: $e");
-        _handleGenerationError(e); // Utilise la même logique d'erreur si nécessaire
-        return;
-      } finally {
-        if (mounted) {
-          setState(() => _isCheckingOutline = false); // --- MODIFICATION ---
-        }
-      }
-
-      // Seulement si le plan existe maintenant, elle continue la génération du chapitre 1.
-      if (novel.chapters.isEmpty) { // Toujours le chapitre 1
-        if (novel.futureOutline == null || novel.futureOutline!.isEmpty) {
-          _showSnackbarMessage("Impossible de générer le plan. Réessayez.", Colors.redAccent);
-          return;
-        } else {
-           // Optionnel: Afficher un message que le plan est prêt et la génération commence
-          debugPrint("Plan initial créé. Démarrage de la génération du chapitre 1.");
-        }
-      }
-    }
-
-    // Continue la génération du chapitre si ce n'est pas le chapitre 1 ou si le plan existait déjà,
-    // ou si le plan vient d'être généré pour le chapitre 1.
     await _generateAndAddNewChapter(novel);
   }
-  // --------------------------------------------------------------------------
 
   Future<void> _generateAndAddNewChapter(Novel novel, {bool finalChapter = false}) async {
     setState(() {
@@ -559,13 +507,10 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   void _handleGenerationError(Object error) {
     if (!mounted) return;
 
-    // --- MODIFICATION: Ajout de _isCheckingOutline pour gérer l'état d'erreur ---
     setState(() {
       _isGeneratingNextChapter = false;
-      _isCheckingOutline = false;
       _chapterStream = null;
     });
-    // --------------------------------------------------------------------------
 
     String message;
     if (error is ApiServerException) {
@@ -1077,7 +1022,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // --- MODIFICATION: Prise en compte de _isCheckingOutline dans l'UI de navigation et l'indicateur de chargement ---
   Widget _buildChapterNavigation({
     required ThemeData theme,
     required Color backgroundColor,
@@ -1087,12 +1031,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     required bool isGenerating,
     required Novel novel,
   }) {
-    // ... (début du code identique) ...
+    // ... (code identique) ...
     bool canGoBack = _currentPage > 0;
     bool hasChapters = novel.chapters.isNotEmpty;
     bool isLastPage = hasChapters && _currentPage == novel.chapters.length - 1;
-    // MODIFIÉ
-    bool navigationDisabled = isGenerating || _isCheckingOutline || !hasChapters;
+    bool navigationDisabled = isGenerating || !hasChapters;
 
     String pageText;
     if (!hasChapters) {
@@ -1140,8 +1083,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // MODIFIÉ: Affiche l'indicateur si en génération OU en vérification de plan
-            (isGenerating || _isCheckingOutline)
+            isGenerating
                 ? const SizedBox(
                     width: 48,
                     height: 24,
@@ -1183,9 +1125,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
   Widget _buildAddChapterMenu(ThemeData theme, Novel novel) {
-    // ... (début du code identique) ...
-     // MODIFIÉ: Prise en compte de _isCheckingOutline
-     final iconColor = (_isGeneratingNextChapter || _isCheckingOutline) ? theme.disabledColor : theme.colorScheme.primary;
+    // ... (code identique) ...
+     final iconColor = _isGeneratingNextChapter ? theme.disabledColor : theme.colorScheme.primary;
     Color popupMenuColor;
     Color popupMenuTextColor;
     switch (Theme.of(context).brightness) {
@@ -1198,8 +1139,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         popupMenuTextColor = theme.colorScheme.onSurface;
         break;
     }
-    // MODIFIÉ: Prise en compte de _isCheckingOutline
-    final bool isMenuEnabled = !(_isGeneratingNextChapter || _isCheckingOutline);
+    final bool isMenuEnabled = !_isGeneratingNextChapter;
     final bool hasChapters = novel.chapters.isNotEmpty;
 
     return PopupMenuButton<String>(
@@ -1256,7 +1196,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       ],
       onSelected: (String result) {
         if (result == 'next' || result == 'first') {
-          // MODIFIÉ: Appel à la fonction qui gère le pré-traitement du plan
           _guardedGenerateChapter(novel);
         } else if (result == 'final') {
           _generateAndAddNewChapter(novel, finalChapter: true);
@@ -1267,7 +1206,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (début du code identique) ...
+    // ... (code identique) ...
      final isDarkMode = ref.watch(themeServiceProvider) == ThemeMode.dark;
     final theme = Theme.of(context);
     final currentBackgroundColor = _getCurrentBackgroundColor();
@@ -1292,22 +1231,18 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         Color navBarTextColor = theme.colorScheme.onSurfaceVariant;
         Color navBarDisabledColor = theme.disabledColor;
 
-        // MODIFIÉ: Prise en compte de _isCheckingOutline
-        final bool isGenerating = _isGeneratingNextChapter || _isCheckingOutline;
+        final bool isGenerating = _isGeneratingNextChapter;
         final bool canDeleteChapter = novel.chapters.isNotEmpty && !isGenerating && _currentPage >= 0 && _currentPage < novel.chapters.length;
         final bool shouldShowTranslationArea = _selectedWord.isNotEmpty && (_isLoadingTranslation || _translationResult != null);
         final bool canEditChapter = novel.chapters.isNotEmpty && !isGenerating && _currentPage >= 0 && _currentPage < novel.chapters.length;
         // final bool showReadingDirectionToggle = novel.language == 'Japonais'; // SUPPRIMÉ
 
         return PopScope(
-          // MODIFIÉ: Prise en compte de _isCheckingOutline
           canPop: !isGenerating,
           onPopInvokedWithResult: (bool didPop, _) {
             if (!didPop) {
               if (isGenerating && mounted) {
-                // MODIFIÉ: Message ajusté
-                final statusMessage = _isCheckingOutline ? "Veuillez attendre la préparation du plan." : "Veuillez attendre la fin de la génération en cours.";
-                _showSnackbarMessage(statusMessage, Colors.orangeAccent);
+                _showSnackbarMessage("Veuillez attendre la fin de la génération en cours.", Colors.orangeAccent);
               }
             } else {
               _saveCurrentScrollPosition();
@@ -1439,8 +1374,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                         }
                         return false;
                       },
-                      // MODIFIÉ: Prise en compte de _isCheckingOutline dans la condition de contenu
-                      child: isGenerating 
+                      child: _isGeneratingNextChapter
                           ? _chapterStream == null
                               ? Center(
                                   child: Padding(
@@ -1455,8 +1389,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                         ),
                                         const SizedBox(height: 24),
                                         Text(
-                                          // MODIFIÉ: Message ajusté
-                                          _isCheckingOutline ? "Préparation du plan..." : "L'écrivain consulte le contexte...",
+                                          "L'écrivain consulte le contexte...",
                                           textAlign: TextAlign.center,
                                           style: _getBaseTextStyle().copyWith(
                                             fontSize: (_getBaseTextStyle().fontSize ?? 19.0) * 1.1,
@@ -1526,7 +1459,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                 primaryColor: navBarPrimaryColor,
                                 textColor: navBarTextColor,
                                 disabledColor: navBarDisabledColor,
-                                isGenerating: _isGeneratingNextChapter, // Note: _isCheckingOutline est pris en compte dans _buildChapterNavigation
+                                isGenerating: isGenerating,
                                 novel: novel,
                               ),
                             ],
