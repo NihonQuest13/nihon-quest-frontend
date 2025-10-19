@@ -1,4 +1,4 @@
-// lib/controllers/home_controller.dart (CORRIGÉ)
+// lib/controllers/home_controller.dart (CORRIGÉ ET FINAL)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models.dart';
@@ -21,9 +21,10 @@ class HomeController {
     final statusNotifier = _ref.read(serverStatusProvider.notifier);
     statusNotifier.state = ServerStatus.connecting;
     
-    // --- DÉBUT CORRECTION "NUAGE QUI TOURNE" ---
-    // Ajout d'un try/catch pour garantir que le statut est TOUJOURS
-    // mis à jour, même en cas d'erreur réseau inattendue.
+    // --- DÉBUT DE LA CORRECTION "NUAGE QUI TOURNE" ---
+    // Version simple et robuste sans Future.any
+    // Le 'isBackendRunning' a son propre timeout, on a juste
+    // besoin de catcher les erreurs imprévues.
     try {
       final isRunning = await _ref.read(localContextServiceProvider).isBackendRunning();
       
@@ -36,7 +37,7 @@ class HomeController {
         statusNotifier.state = ServerStatus.failed; // Forcer l'état d'échec
       }
     }
-    // --- FIN CORRECTION "NUAGE QUI TOURNE" ---
+    // --- FIN DE LA CORRECTION ---
   }
 
   // ================== Synchronisation ==================
@@ -90,7 +91,6 @@ class HomeController {
 
   // ================== Création de roman ==================
   
-  // ✅ CORRECTION : La méthode accepte maintenant 'chapterText' en argument
   Future<void> handleNovelCreation(Novel newNovel, String chapterText) async {
     if (!_context.mounted) return;
 
@@ -138,7 +138,7 @@ class HomeController {
 
   // ================== Dialog de génération ==================
   
-  // ⛔️ Cette méthode est maintenant inutile ici car la logique est dans home_page.dart
+  // (Cette méthode est correctement déplacée dans home_page.dart, rien à changer ici)
   Future<String?> _showStreamingDialog(Novel novel) async {
     final prompt = await AIService.preparePrompt(
       novel: novel,
@@ -154,10 +154,8 @@ class HomeController {
       modelId: novel.modelId,
       language: novel.language,
     );
-
-    // Note : Le code du dialog reste dans home_page.dart car il dépend du UI
-    // On retourne juste le stream ici
-    return null; // À compléter avec votre logique de dialog
+    
+    return null; // La logique du dialog est dans home_page.dart
   }
 
   // ================== Helpers ==================

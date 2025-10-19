@@ -1,4 +1,4 @@
-// lib/providers.dart (CORRIGÉ)
+// lib/providers.dart (CORRIGÉ ET FINAL)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
