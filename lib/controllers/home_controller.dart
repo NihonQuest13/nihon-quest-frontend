@@ -1,4 +1,4 @@
-// lib/controllers/home_controller.dart (CORRIGÉ)
+// lib/controllers/home_controller.dart (NETTOYÉ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models.dart';
@@ -47,7 +47,6 @@ class HomeController {
     _showFeedback('Synchronisation complète avec le serveur en cours...', color: Colors.blue);
 
     try {
-      // ✅ CORRECTION : Utiliser l'état actuel du provider au lieu de .build()
       final asyncNovels = _ref.read(novelsProvider);
       final novelsToSync = asyncNovels.when(
         data: (novels) => novels,
