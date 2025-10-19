@@ -1,4 +1,4 @@
-// lib/providers.dart (OPTIMISÉ ET CORRIGÉ)
+// lib/providers.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -111,11 +111,15 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
 
     debugPrint("[NovelsProvider] Récupération depuis Supabase...");
     
+    // --- DÉBUT DE LA CORRECTION ---
+    // On change select('*') en 'select('*, chapters(*)')'
+    // pour que Supabase retourne les romans ET tous les chapitres associés.
     final data = await supabase
         .from('novels')
-        .select('*') 
+        .select('*, chapters(*)') 
         .eq('user_id', userId)
         .order('updated_at', ascending: false); 
+    // --- FIN DE LA CORRECTION ---
         
     final novels = data.map((row) => Novel.fromJson(row)).toList();
     

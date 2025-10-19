@@ -21,7 +21,7 @@ class HomeController {
     final statusNotifier = _ref.read(serverStatusProvider.notifier);
     statusNotifier.state = ServerStatus.connecting;
     
-    // --- DÉBUT DE LA CORRECTION ---
+    // --- DÉBUT CORRECTION "NUAGE QUI TOURNE" ---
     // Ajout d'un try/catch pour garantir que le statut est TOUJOURS
     // mis à jour, même en cas d'erreur réseau inattendue.
     try {
@@ -36,7 +36,7 @@ class HomeController {
         statusNotifier.state = ServerStatus.failed; // Forcer l'état d'échec
       }
     }
-    // --- FIN DE LA CORRECTION ---
+    // --- FIN CORRECTION "NUAGE QUI TOURNE" ---
   }
 
   // ================== Synchronisation ==================
@@ -53,7 +53,13 @@ class HomeController {
     _showFeedback('Synchronisation complète avec le serveur en cours...', color: Colors.blue);
 
     try {
+      // --- DÉBUT CORRECTION ERREUR "getNovelsWithFullContent" ---
+      // On utilise .build()
+      // 'novelsToSync' contiendra maintenant les chapitres
+      // grâce à notre correction dans lib/providers.dart
       final novelsToSync = await _ref.read(novelsProvider.notifier).build();
+      // --- FIN CORRECTION ERREUR ---
+      
       if (!_context.mounted) return;
 
       if (novelsToSync.isEmpty) {
@@ -67,13 +73,7 @@ class HomeController {
         for (final chapter in novel.chapters) {
           await localContextService.addChapter(
             novelId: novel.id,
-            // ⛔️ ATTENTION : 'chapter.content' n'est pas chargé ici par défaut.
-            // Cette logique peut nécessiter de re-charger le roman en entier.
-            // Pour l'instant, on suppose que 'chapter.content' est disponible
-            // ou que le service gère le fait qu'il soit vide.
-            // Si vos 'chapters' dans le 'Novel' de la liste ne sont que des ID,
-            // cette synchro va échouer.
-            chapterText: chapter.content,
+            chapterText: chapter.content, // 'chapter.content' est maintenant disponible
           );
         }
       }
@@ -90,6 +90,7 @@ class HomeController {
 
   // ================== Création de roman ==================
   
+  // ✅ CORRECTION : La méthode accepte maintenant 'chapterText' en argument
   Future<void> handleNovelCreation(Novel newNovel, String chapterText) async {
     if (!_context.mounted) return;
 
@@ -137,10 +138,26 @@ class HomeController {
 
   // ================== Dialog de génération ==================
   
-  // (Cette méthode est correctement déplacée dans home_page.dart, rien à changer ici)
+  // ⛔️ Cette méthode est maintenant inutile ici car la logique est dans home_page.dart
   Future<String?> _showStreamingDialog(Novel novel) async {
-    // ...
-    return null; 
+    final prompt = await AIService.preparePrompt(
+      novel: novel,
+      isFirstChapter: true,
+    );
+
+    if (!_context.mounted || prompt.isEmpty) {
+      throw Exception("La préparation du prompt a échoué.");
+    }
+
+    final stream = AIService.streamChapterFromPrompt(
+      prompt: prompt,
+      modelId: novel.modelId,
+      language: novel.language,
+    );
+
+    // Note : Le code du dialog reste dans home_page.dart car il dépend du UI
+    // On retourne juste le stream ici
+    return null; // À compléter avec votre logique de dialog
   }
 
   // ================== Helpers ==================

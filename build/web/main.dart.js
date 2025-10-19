@@ -94136,7 +94136,7 @@ h.toString
 q=h
 s=1
 break}A.aI().$1("[NovelsProvider] R\xe9cup\xe9ration depuis Supabase...")
-h=o.xi("novels").OE("*").CR("user_id",m)
+h=o.xi("novels").OE("*, chapters(*)").CR("user_id",m)
 j=h.f.gho().i(0,"order")
 n=j==null?"":j+","
 g=J
