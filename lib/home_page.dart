@@ -1,10 +1,11 @@
-// lib/home_page.dart (REFACTORISÉ ET CORRIGÉ)
+// lib/home_page.dart (COMPLET AVEC ADMINISTRATION)
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'admin_page.dart'; // Import de la page d'administration
 import 'controllers/home_controller.dart';
 import 'create_novel_page.dart' as create;
 import 'edit_novel_page.dart';
@@ -14,17 +15,11 @@ import 'providers.dart';
 import 'services/ai_service.dart';
 import 'services/sync_service.dart';
 import 'services/startup_service.dart';
-import 'services/vocabulary_service.dart'; // ✅ Import nécessaire
+import 'services/vocabulary_service.dart';
 import 'widgets/streaming_text_widget.dart';
 
 class HomePage extends ConsumerStatefulWidget {
-  
-  // ✅ OPTIMISATION : Utiliser un constructeur const simple.
-  const HomePage({ super.key });
-
-  // ⛔️ Les services requis dans le constructeur ont été supprimés.
-  // final VocabularyService vocabularyService;
-  // final ThemeService themeService;
+  const HomePage({super.key});
 
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
@@ -43,18 +38,15 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   void _initializeController() {
     if (!mounted) return;
-    // 'ref' est automatiquement disponible dans ConsumerState
     _controller = HomeController(ref, context);
     _controller.checkBackendStatus();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Écoute les changements de statut du serveur
     ref.listen<ServerStatus>(serverStatusProvider, (previous, next) async {
       if (next == ServerStatus.connected) {
         debugPrint("[HomePage Listener] Serveur connecté. Lancement de la synchronisation de démarrage.");
-        // ✅ Lire les services directement depuis 'ref'
         await ref.read(startupServiceProvider).synchronizeOnStartup();
         ref.read(syncServiceProvider).processQueue();
       }
@@ -96,10 +88,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 return Column(
                   children: [
                     Expanded(
-                      // ✅ OPTIMISATION : Ne plus passer les services.
-                      child: _NovelCoverItem(
-                        novel: novel,
-                      ),
+                      child: _NovelCoverItem(novel: novel),
                     ),
                     const SizedBox(height: 10),
                     Divider(height: 1, color: theme.dividerColor.withAlpha(128)),
@@ -152,6 +141,25 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   List<Widget> _buildAppBarActions(bool isDarkMode) {
     return [
+      // ✅ NOUVEAU : Bouton Admin (visible uniquement pour les admins)
+      FutureBuilder<bool>(
+        future: _checkIfAdmin(),
+        builder: (context, snapshot) {
+          if (snapshot.data == true) {
+            return IconButton(
+              icon: const Icon(Icons.admin_panel_settings),
+              tooltip: 'Administration',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AdminPage()),
+                );
+              },
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      ),
       IconButton(
         icon: Icon(isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
         tooltip: 'Changer de thème',
@@ -175,6 +183,25 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
       const SizedBox(width: 8),
     ];
+  }
+
+  // ✅ NOUVELLE FONCTION : Vérifier si l'utilisateur est admin
+  Future<bool> _checkIfAdmin() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return false;
+
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', userId)
+          .maybeSingle();
+
+      return response?['is_admin'] == true;
+    } catch (e) {
+      debugPrint('Erreur vérification admin: $e');
+      return false;
+    }
   }
 
   Widget _buildFloatingActionButtons() {
@@ -583,27 +610,15 @@ class _InfoChip extends StatelessWidget {
 
 // ==================== NOVEL COVER ITEM ====================
 
-// ✅ Doit être un ConsumerStatefulWidget pour accéder à 'ref'
 class _NovelCoverItem extends ConsumerStatefulWidget {
-  
-  // ✅ OPTIMISATION : Utiliser un constructeur const
-  const _NovelCoverItem({
-    required this.novel,
-    // ⛔️ Supprimer les services du constructeur
-    // required this.vocabularyService,
-    // required this.themeService,
-  });
+  const _NovelCoverItem({required this.novel});
 
   final Novel novel;
-  // ⛔️ Supprimer les variables
-  // final VocabularyService vocabularyService;
-  // final ThemeService themeService;
 
   @override
   ConsumerState<_NovelCoverItem> createState() => _NovelCoverItemState();
 }
 
-// ✅ Doit être un ConsumerState pour accéder à 'ref'
 class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
   bool _isHovering = false;
 
@@ -664,7 +679,6 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                     ),
                   );
                   if (mounted) {
-                    // ✅ Utiliser 'ref' (disponible dans ConsumerState)
                     ref.read(novelsProvider.notifier).refresh();
                   }
                 },
@@ -752,7 +766,6 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
     if (confirmDelete == true) {
       try {
         final syncTask = SyncTask(action: 'delete_novel', novelId: novelId);
-        // ✅ Utiliser 'ref' pour lire les providers
         await ref.read(syncServiceProvider).addTask(syncTask);
         await ref.read(novelsProvider.notifier).deleteNovel(novelId);
 
@@ -792,10 +805,7 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
         duration: const Duration(milliseconds: 200),
         child: GestureDetector(
           onTap: () async {
-            // ✅ CORRECTION CLÉ :
-            // On lit les services nécessaires depuis 'ref' *au moment du clic*.
             final vocabularyService = ref.read(vocabularyServiceProvider);
-            // 'themeService' est l'instance globale importée de providers.dart
             
             final currentContext = context;
             if (!currentContext.mounted) return;
@@ -805,9 +815,8 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
               MaterialPageRoute(
                 builder: (context) => NovelReaderPage(
                   novelId: widget.novel.id,
-                  // ✅ On passe les services qu'on vient de lire
                   vocabularyService: vocabularyService,
-                  themeService: themeService, // Utilise l'instance globale
+                  themeService: themeService,
                 ),
               ),
             );
