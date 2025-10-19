@@ -14,18 +14,17 @@ import 'providers.dart';
 import 'services/ai_service.dart';
 import 'services/sync_service.dart';
 import 'services/startup_service.dart';
-import 'services/vocabulary_service.dart';
+import 'services/vocabulary_service.dart'; // ✅ Import nécessaire
 import 'widgets/streaming_text_widget.dart';
 
 class HomePage extends ConsumerStatefulWidget {
-  const HomePage({
-    super.key,
-    required this.vocabularyService,
-    required this.themeService,
-  });
+  
+  // ✅ OPTIMISATION : Utiliser un constructeur const simple.
+  const HomePage({ super.key });
 
-  final VocabularyService vocabularyService;
-  final ThemeService themeService;
+  // ⛔️ Les services requis dans le constructeur ont été supprimés.
+  // final VocabularyService vocabularyService;
+  // final ThemeService themeService;
 
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
@@ -44,7 +43,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   void _initializeController() {
     if (!mounted) return;
-    // ✅ CORRECTION : Passer 'ref' directement, pas 'ref as Ref<Object?>'
+    // 'ref' est automatiquement disponible dans ConsumerState
     _controller = HomeController(ref, context);
     _controller.checkBackendStatus();
   }
@@ -55,6 +54,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     ref.listen<ServerStatus>(serverStatusProvider, (previous, next) async {
       if (next == ServerStatus.connected) {
         debugPrint("[HomePage Listener] Serveur connecté. Lancement de la synchronisation de démarrage.");
+        // ✅ Lire les services directement depuis 'ref'
         await ref.read(startupServiceProvider).synchronizeOnStartup();
         ref.read(syncServiceProvider).processQueue();
       }
@@ -96,10 +96,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                 return Column(
                   children: [
                     Expanded(
+                      // ✅ OPTIMISATION : Ne plus passer les services.
                       child: _NovelCoverItem(
                         novel: novel,
-                        vocabularyService: widget.vocabularyService,
-                        themeService: widget.themeService,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -584,21 +583,27 @@ class _InfoChip extends StatelessWidget {
 
 // ==================== NOVEL COVER ITEM ====================
 
+// ✅ Doit être un ConsumerStatefulWidget pour accéder à 'ref'
 class _NovelCoverItem extends ConsumerStatefulWidget {
+  
+  // ✅ OPTIMISATION : Utiliser un constructeur const
   const _NovelCoverItem({
     required this.novel,
-    required this.vocabularyService,
-    required this.themeService,
+    // ⛔️ Supprimer les services du constructeur
+    // required this.vocabularyService,
+    // required this.themeService,
   });
 
   final Novel novel;
-  final VocabularyService vocabularyService;
-  final ThemeService themeService;
+  // ⛔️ Supprimer les variables
+  // final VocabularyService vocabularyService;
+  // final ThemeService themeService;
 
   @override
   ConsumerState<_NovelCoverItem> createState() => _NovelCoverItemState();
 }
 
+// ✅ Doit être un ConsumerState pour accéder à 'ref'
 class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
   bool _isHovering = false;
 
@@ -659,6 +664,7 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                     ),
                   );
                   if (mounted) {
+                    // ✅ Utiliser 'ref' (disponible dans ConsumerState)
                     ref.read(novelsProvider.notifier).refresh();
                   }
                 },
@@ -699,6 +705,7 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
   }
 
   Future<void> _addOrChangeCover() async {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text("La gestion des couvertures sera implémentée bientôt !"),
@@ -745,8 +752,8 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
     if (confirmDelete == true) {
       try {
         final syncTask = SyncTask(action: 'delete_novel', novelId: novelId);
+        // ✅ Utiliser 'ref' pour lire les providers
         await ref.read(syncServiceProvider).addTask(syncTask);
-
         await ref.read(novelsProvider.notifier).deleteNovel(novelId);
 
         if (currentContext.mounted) {
@@ -785,15 +792,22 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
         duration: const Duration(milliseconds: 200),
         child: GestureDetector(
           onTap: () async {
+            // ✅ CORRECTION CLÉ :
+            // On lit les services nécessaires depuis 'ref' *au moment du clic*.
+            final vocabularyService = ref.read(vocabularyServiceProvider);
+            // 'themeService' est l'instance globale importée de providers.dart
+            
             final currentContext = context;
             if (!currentContext.mounted) return;
+            
             await Navigator.push<void>(
               currentContext,
               MaterialPageRoute(
                 builder: (context) => NovelReaderPage(
                   novelId: widget.novel.id,
-                  vocabularyService: widget.vocabularyService,
-                  themeService: widget.themeService,
+                  // ✅ On passe les services qu'on vient de lire
+                  vocabularyService: vocabularyService,
+                  themeService: themeService, // Utilise l'instance globale
                 ),
               ),
             );

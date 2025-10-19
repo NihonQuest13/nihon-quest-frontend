@@ -1,4 +1,4 @@
-// lib/main.dart (MODIFIÉ ET CORRIGÉ)
+// lib/main.dart (CORRIGÉ)
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,14 +7,16 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'home_page.dart';
-import 'login_page.dart';
+// ⛔️ Ces imports ne sont plus nécessaires ici
+// import 'home_page.dart';
+// import 'login_page.dart';
 import 'providers.dart';
 import 'services/vocabulary_service.dart';
 import 'utils/app_theme.dart';
-import 'widgets/splash_screen.dart';
+// ⛔️ 'splash_screen.dart' n'est pas utilisé
+// import 'widgets/splash_screen.dart'; 
 
-import 'auth_guard.dart'; // Import du nouveau garde
+import 'auth_guard.dart'; // Import du garde
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,27 +32,28 @@ void main() async {
   await themeService.loadTheme();
 
   final prefs = await SharedPreferences.getInstance();
-  final vocabularyService = VocabularyService(prefs: prefs);
+  
+  // ⛔️ L'instance de vocabularyService n'a plus besoin d'être créée ici
+  // final vocabularyService = VocabularyService(prefs: prefs);
 
   runApp(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: MyApp(
-        vocabularyService: vocabularyService,
-      ),
+      // ✅ Utiliser un constructeur const pour MyApp
+      child: const MyApp(),
     ),
   );
 }
 
 class MyApp extends ConsumerWidget {
-  final VocabularyService vocabularyService;
+  // ⛔️ Supprimer le constructeur et la variable
+  // final VocabularyService vocabularyService;
+  // const MyApp({ ... });
 
-  const MyApp({
-    super.key,
-    required this.vocabularyService,
-  });
+  // ✅ Utiliser un constructeur const simple
+  const MyApp({super.key});
   
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,14 +64,11 @@ class MyApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
+      // ✅ AuthGuard peut rester const car HomePage sera aussi const
       home: const AuthGuard(), 
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-// ⛔️ LE PROVIDER EST SUPPRIMÉ D'ICI
-// final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
-//   final prefs = ref.watch(sharedPreferencesProvider);
-//   return VocabularyService(prefs: prefs);
-// });
+// ⛔️ LE PROVIDER EST SUPPRIMÉ D'ICI (c'est déjà fait, c'est parfait)

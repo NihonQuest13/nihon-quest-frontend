@@ -1,10 +1,10 @@
-// lib/auth_guard.dart (CORRIGÉ - Version nettoyée)
+// lib/auth_guard.dart (CORRIGÉ)
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'home_page.dart'; // ✅ L'import simple fonctionne maintenant
+import 'home_page.dart'; 
 import 'login_page.dart';
 import 'providers.dart'; 
 import 'widgets/splash_screen.dart'; 
@@ -128,11 +128,11 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
     }
 
     if (_isApproved) {
-      final vocabularyService = ref.watch(vocabularyServiceProvider);
-      return HomePage( // ✅ L'appel simple fonctionne maintenant
-        vocabularyService: vocabularyService,
-        themeService: themeService,
-      );
+      // ⛔️ On n'a plus besoin de lire les services ici
+      // final vocabularyService = ref.watch(vocabularyServiceProvider);
+      
+      // ✅ On appelle le constructeur const de HomePage (sans paramètres)
+      return const HomePage(); 
     } else {
       // Utilisateur non connecté
       return const LoginPage();
