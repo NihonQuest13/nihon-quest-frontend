@@ -279,7 +279,25 @@ class AIService {
     return response.reasonPhrase ?? 'Erreur inconnue';
   }
 
+  // --- MODIFICATION : AJOUT DE LA FONCTION DE NETTOYAGE ---
+  /// Nettoie la réponse brute de l'IA en supprimant les blocs <think>...</think>.
+  static String _cleanAIResponse(String rawText) {
+    // L'option 'dotAll: true' permet au '.' de correspondre aux sauts de ligne,
+    // ce qui est crucial car le bloc <think> est sur plusieurs lignes.
+    final regex = RegExp(r'<think>.*?</think>', dotAll: true, caseSensitive: false);
+    
+    // Remplace toutes les occurrences trouvées par une chaîne vide et nettoie les espaces
+    return rawText.replaceAll(regex, '').trim();
+  }
+  // --- FIN DE LA MODIFICATION ---
+
   static Chapter extractTitleAndContent(String rawContent, int currentChapterCount, bool isFirstChapter, bool isFinalChapter, LanguagePrompts languagePrompts) {
+    
+    // --- MODIFICATION : APPEL DE LA FONCTION DE NETTOYAGE ---
+    // On nettoie le contenu brut AVANT tout traitement
+    final String cleanedRawContent = _cleanAIResponse(rawContent);
+    // --- FIN DE LA MODIFICATION ---
+
     String defaultTitle;
     if (isFirstChapter) {
       defaultTitle = languagePrompts.titleFirst;
@@ -290,9 +308,11 @@ class AIService {
     }
 
     String chapterTitle = defaultTitle;
-    String chapterContent = rawContent.trim();
+    // On utilise le contenu nettoyé ici
+    String chapterContent = cleanedRawContent.trim();
 
-    final lines = rawContent.trim().split('\n');
+    // Et ici
+    final lines = cleanedRawContent.trim().split('\n');
     if (lines.isNotEmpty) {
         final firstLine = lines.first.trim();
         final titleRegex = RegExp(r"^(?:Chapitre|Chapter|Capítulo|Capitolo|第[一二三四五六七八九十百千\d]+章|第一章|最終章)\s*\d*\s*[:：-]?\s*(.*)", caseSensitive: false);

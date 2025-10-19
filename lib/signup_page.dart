@@ -1,4 +1,4 @@
-// lib/signup_page.dart (CORRIGÉ ET AMÉLIORÉ)
+// lib/signup_page.dart (CORRIGÉ SELON LE SQL)
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,11 +10,11 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  // ✅ Contrôleurs ajoutés pour nom et prénom
+  // ✅ Renommés pour correspondre au SQL (prénom = first_name, nom = last_name)
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _nomController = TextEditingController();
-  final _prenomController = TextEditingController();
+  final _firstNameController = TextEditingController(); // Prénom
+  final _lastNameController = TextEditingController();  // Nom
   
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -23,8 +23,8 @@ class _SignUpPageState extends State<SignUpPage> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _nomController.dispose(); // ✅ Ajouté
-    _prenomController.dispose(); // ✅ Ajouté
+    _firstNameController.dispose(); // ✅ Ajouté
+    _lastNameController.dispose();  // ✅ Ajouté
     super.dispose();
   }
 
@@ -48,7 +48,6 @@ class _SignUpPageState extends State<SignUpPage> {
         password: _passwordController.text.trim(),
       );
       
-      // Sécurité : vérifier que l'utilisateur a bien été créé
       if (authResponse.user == null) {
         throw const AuthException("Erreur : La création de l'utilisateur a échoué.");
       }
@@ -56,13 +55,12 @@ class _SignUpPageState extends State<SignUpPage> {
       final userId = authResponse.user!.id;
 
       // 2. INSERTION PROFILES (Étape 2)
-      // C'est ici qu'on ajoute l'utilisateur à ta table 'profiles'
+      // ✅ Payload corrigé pour correspondre EXACTEMENT à ton SQL
       await Supabase.instance.client.from('profiles').insert({
-        'id': userId, // L'ID doit correspondre à l'ID de l'utilisateur authentifié
-        'email': _emailController.text.trim(),
-        'nom': _nomController.text.trim(),
-        'prenom': _prenomController.text.trim(),
-        'validated': false // Mettre 'false' par défaut pour que tu puisses le valider
+        'id': userId,
+        'first_name': _firstNameController.text.trim(), // Prénom
+        'last_name': _lastNameController.text.trim(),   // Nom
+        'status': 'pending' // Correspond à ton DEFAULT 'pending'
       });
 
       // 3. SUCCÈS (Seulement si les étapes 1 et 2 ont réussi)
@@ -98,9 +96,10 @@ class _SignUpPageState extends State<SignUpPage> {
     } catch (error) {
       // Gère les erreurs d'insertion (ex: RLS, table 'profiles' mal configurée)
       if (mounted) {
+        debugPrint("Erreur insertion profile: ${error.toString()}"); // Pour ton débogage
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Erreur d'inscription : ${error.toString()}"),
+            content: const Text("Une erreur est survenue lors de la création du profil."),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -149,9 +148,9 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 40),
 
-                  // ✅ Champ Prénom
+                  // ✅ Champ Prénom (first_name)
                   TextFormField(
-                    controller: _prenomController,
+                    controller: _firstNameController,
                     decoration: InputDecoration(
                       labelText: 'Prénom',
                       prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
@@ -168,9 +167,9 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 20),
                   
-                  // ✅ Champ Nom
+                  // ✅ Champ Nom (last_name)
                   TextFormField(
-                    controller: _nomController,
+                    controller: _lastNameController,
                     decoration: InputDecoration(
                       labelText: 'Nom',
                       prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
