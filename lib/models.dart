@@ -1,4 +1,4 @@
-// lib/models.dart (CORRIGÉ)
+// lib/models.dart (CORRIGÉ - AVEC CHAPTER EN SNAKE_CASE)
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -89,7 +89,7 @@ class ChapterSummary {
 
 class Novel {
   final String id;
-  final String user_id; // ✅ AJOUTÉ: C'est vital pour l'insertion
+  final String user_id; 
   String title;
   String level; 
   String genre; 
@@ -106,7 +106,7 @@ class Novel {
 
   Novel({
     String? id,
-    required this.user_id, // ✅ AJOUTÉ: Doit être fourni lors de la création
+    required this.user_id,
     required this.title,
     required this.level,
     required this.genre,
@@ -148,22 +148,16 @@ class Novel {
     return true;
   }
 
-  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'user_id': user_id, // ✅ AJOUTÉ: Nécessaire pour l'insertion
+      'user_id': user_id, 
       'title': title,
       'level': level,
       'genre': genre,
       'specifications': specifications,
-      
-      // ⛔️ SUPPRIMÉ: 'chapters' n'est pas une colonne dans la table 'novels'.
-      // 'chapters': chapters.map((chapter) => chapter.toJson()).toList(), 
-      
-      // ✅ GARDÉ: 'summaries' va maintenant s'insérer dans la colonne JSONB
+      // 'chapters' est retiré, car il a sa propre table
       'summaries': summaries.map((summary) => summary.toJson()).toList(),
-      
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'language': language,
@@ -173,11 +167,8 @@ class Novel {
     };
   }
 
-  // --- ⬇️ CORRECTION AUSSI DANS fromJson ⬇️ ---
   factory Novel.fromJson(Map<String, dynamic> json) {
     var chapterList = <Chapter>[];
-    // 'chapters' est lu ici car le 'novelsProvider' fait un JOIN
-    // Ce n'est pas un champ direct de la table 'novels'
     if (json['chapters'] != null && json['chapters'] is List) {
       chapterList = (json['chapters'] as List)
           .map((chapterJson) => Chapter.fromJson(chapterJson as Map<String, dynamic>))
@@ -185,7 +176,6 @@ class Novel {
     }
 
     var summaryList = <ChapterSummary>[];
-    // ✅ MODIFIÉ: Lit la colonne 'summaries' de la BDD
     if (json['summaries'] != null && json['summaries'] is List) {
        summaryList = (json['summaries'] as List)
            .map((summaryJson) => ChapterSummary.fromJson(summaryJson as Map<String, dynamic>))
@@ -203,8 +193,7 @@ class Novel {
     final now = DateTime.now();
     final createdAt = parseDateTime(json['created_at'], now);
     final updatedAt = parseDateTime(json['updated_at'], createdAt);
-
-    // ✅ AJOUTÉ: 'user_id' est lu depuis la BDD
+    
     final userId = json['user_id']?.toString();
     if (userId == null) {
       debugPrint("ALERTE: Roman ${json['id']} chargé sans user_id !");
@@ -242,17 +231,17 @@ class Chapter {
     required this.createdAt,
   }) : id = id ?? uuid.v4();
 
-  // Cette partie est déjà corrigée (utilise snake_case)
+  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'content': content,
-      'created_at': createdAt.toIso8601String(),
+      'created_at': createdAt.toIso8601String(), // ✅ CORRIGÉ: 'createdAt' -> 'created_at'
     };
   }
 
-  // Cette partie est déjà corrigée (utilise snake_case)
+  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   factory Chapter.fromJson(Map<String, dynamic> json) {
      DateTime parseDateTime(dynamic dateString, DateTime fallback) {
        if (dateString is String) {
@@ -260,6 +249,7 @@ class Chapter {
        }
        return fallback;
      }
+     // ✅ CORRIGÉ: 'createdAt' -> 'created_at'
      final createdAt = parseDateTime(json['created_at'], DateTime.now()); 
 
     return Chapter(
