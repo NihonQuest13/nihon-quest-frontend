@@ -27091,7 +27091,7 @@ _.y=c
 _.z="Japonais"
 _.Q=$
 _.as="Fantasy"
-_.at="deepseek/deepseek-r1-0528:free"
+_.at="deepseek/deepseek-chat-v3-0324:free"
 _.ax=d
 _.d=_.ch=$
 _.c=_.a=null},
@@ -92561,7 +92561,7 @@ r.toString}p.CW=r
 p.as=B.b.n(r,s.d)?s.d:B.b.gaa(p.CW)
 p.at=B.b.n(B.ju,s.e)?s.e:B.b.gaa(B.ju)
 if($.pF.aw(s.ax)){r=s.ax
-r.toString}else r="deepseek/deepseek-r1-0528:free"
+r.toString}else r="deepseek/deepseek-chat-v3-0324:free"
 p.ax=r},
 l(){var s=this.x,r=$.am()
 s.W$=r
@@ -107591,8 +107591,8 @@ $.lp=null
 $.q4=null
 $.aOG=1
 $.aGS=-9007199254740992
-$.pF=function(){var s="Rapide, coh\xe9rent et excellent pour la narration. (Recommand\xe9)",r=t.N
-return A.a3(["deepseek/deepseek-r1-0528:free",A.a3(["name","Deepseek (Par d\xe9faut - Test)","description",s],r,r),"alibaba/tongyi-deepresearch-30b-a3b:free",A.a3(["name","Alibaba (Par d\xe9faut - Test)","description",s],r,r)],r,t.GU)}()
+$.pF=function(){var s=t.N
+return A.a3(["deepseek/deepseek-chat-v3-0324:free",A.a3(["name","Deepseek (Par d\xe9faut - Test)","description","Rapide, coh\xe9rent et excellent pour la narration. (Recommand\xe9)"],s,s),"z-ai/glm-4.5-air:free",A.a3(["name","Z-ai (Phase de test)","description","Toujours en phase de test, peut produire des r\xe9sultats incoh\xe9rents."],s,s)],s,t.GU)}()
 $.aJA=A.a3(["Japonais",B.Tt,"Fran\xe7ais",B.Tu,"Anglais",B.rR,"Espagnol",B.Ts,"Italien",B.Tr,"Cor\xe9en",B.Tq,"default",B.rR],t.N,A.aw("lO"))
 $.aLT=0
 $.aXV=A.E(t.N,t.JW)
