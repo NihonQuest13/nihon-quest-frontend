@@ -1,4 +1,4 @@
-// lib/models.dart
+// lib/models.dart (CORRIGÉ)
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -34,6 +34,8 @@ class VocabularyEntry {
       'word': word,
       'reading': reading,
       'translation': translation,
+      // Note: ce 'createdAt' est OK car il n'est pas lié à Supabase
+      // mais s'il était dans sa propre table, il faudrait le passer en snake_case
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -65,6 +67,7 @@ class ChapterSummary {
     return {
       'endChapterIndex': endChapterIndex,
       'summaryText': summaryText,
+      // Note: idem que pour VocabularyEntry
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -146,6 +149,7 @@ class Novel {
     return true;
   }
 
+  // Cette partie est déjà correcte (utilise snake_case pour les clés Supabase)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -153,7 +157,10 @@ class Novel {
       'level': level,
       'genre': genre,
       'specifications': specifications,
-      'chapters': chapters.map((chapter) => chapter.toJson()).toList(),
+      // 'chapters' et 'summaries' ne sont pas des colonnes directes dans la table 'novels'
+      // Ils sont gérés par leurs propres tables ou stockés localement.
+      // Si 'chapters' était une colonne JSONB, il faudrait utiliser la clé 'chapters'
+      'chapters': chapters.map((chapter) => chapter.toJson()).toList(), 
       'summaries': summaries.map((summary) => summary.toJson()).toList(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -164,6 +171,7 @@ class Novel {
     };
   }
 
+  // Cette partie est déjà correcte (utilise snake_case pour lire les clés Supabase)
   factory Novel.fromJson(Map<String, dynamic> json) {
     var chapterList = <Chapter>[];
     if (json['chapters'] != null && json['chapters'] is List) {
@@ -191,7 +199,6 @@ class Novel {
     final createdAt = parseDateTime(json['created_at'], now);
     final updatedAt = parseDateTime(json['updated_at'], createdAt);
 
-    // ✅ CORRECTION : Conversion explicite en String avec toString() pour éviter l'erreur "field not initialized"
     return Novel(
       id: json['id']?.toString() ?? uuid.v4(),
       title: json['title']?.toString() ?? 'Titre inconnu',
@@ -223,15 +230,17 @@ class Chapter {
     required this.createdAt,
   }) : id = id ?? uuid.v4();
 
+  // ✅ CORRECTION ICI
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'content': content,
-      'createdAt': createdAt.toIso8601String(),
+      'created_at': createdAt.toIso8601String(), // 'createdAt' -> 'created_at'
     };
   }
 
+  // ✅ CORRECTION ICI
   factory Chapter.fromJson(Map<String, dynamic> json) {
      DateTime parseDateTime(dynamic dateString, DateTime fallback) {
        if (dateString is String) {
@@ -239,7 +248,8 @@ class Chapter {
        }
        return fallback;
      }
-     final createdAt = parseDateTime(json['createdAt'], DateTime.now());
+     // 'createdAt' -> 'created_at'
+     final createdAt = parseDateTime(json['created_at'], DateTime.now()); 
 
     return Chapter(
       id: json['id']?.toString() ?? uuid.v4(),
