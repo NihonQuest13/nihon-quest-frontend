@@ -205,9 +205,6 @@ cd /d "!FRONTEND!"
 
 REM ═══ ÉTAPE 1 : Vérifier build/web ═══
 echo 🔍 Vérification de build/web...
-if not exist "build\web\index.html" (
-    echo.
-    echo ⚠️  Le dossier build/web n'existe pas ou est incomplet !
     echo.
     echo 🔨 Compilation Flutter en cours...
     echo.
@@ -224,9 +221,8 @@ if not exist "build\web\index.html" (
     
     echo.
     echo ✅ Compilation terminée !
-) else (
-    echo ✅ build/web trouvé !
-)
+    echo 📂 Fichiers dans: build\web
+
 
 echo.
 echo ═══════════════════════════════════════
