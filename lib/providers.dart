@@ -92,44 +92,47 @@ final novelsProvider = AsyncNotifierProvider<NovelsNotifier, List<Novel>>(Novels
 class NovelsNotifier extends AsyncNotifier<List<Novel>> {
   DateTime? _lastFetch;
   static const _cacheDuration = Duration(minutes: 5);
+  String? _cachedUserId; // <-- ✅ AJOUT : Mémorise l'ID de l'utilisateur du cache
 
   @override
   Future<List<Novel>> build() async {
     final supabase = ref.watch(supabaseProvider);
     final userId = supabase.auth.currentUser?.id;
 
-    if (userId == null) return [];
-
     final now = DateTime.now();
-    if (_lastFetch != null && 
+    
+    // --- ✅ MODIFICATION : Vérifie si le user ID du cache correspond au user ID actuel ---
+    if (_lastFetch != null &&
         now.difference(_lastFetch!) < _cacheDuration &&
-        state.hasValue) {
-      debugPrint("[NovelsProvider] Utilisation du cache (${state.value!.length} romans)");
+        state.hasValue &&
+        _cachedUserId == userId) // <-- LA VÉRIFICATION CRITIQUE
+    {
+      debugPrint("[NovelsProvider] Utilisation du cache (user: $userId, ${state.value!.length} romans)");
       return state.value!;
     }
+    // --- FIN MODIFICATION ---
 
-    debugPrint("[NovelsProvider] Récupération depuis Supabase (requête unique)...");
-    
-    // ✅ =================================================================
-    // ✅ CORRECTION : Revenir à une requête unique.
-    // On sélectionne 'novels' et on demande à Supabase d'intégrer
-    // tous les 'chapters' qui correspondent.
-    // ✅ =================================================================
+    debugPrint("[NovelsProvider] Cache invalide (user: $userId). Récupération depuis Supabase...");
+
+    if (userId == null) {
+      _lastFetch = now;
+      _cachedUserId = null; // <-- ✅ Vide l'ID du cache
+      return [];
+    }
+
     final novelsData = await supabase
         .from('novels')
-        .select('*, chapters(*)') // <-- LA MODIFICATION EST ICI
+        .select('*, chapters(*)')
         .eq('user_id', userId)
         .order('updated_at', ascending: false)
-        // On demande aussi de trier les chapitres intégrés
-        .order('created_at', referencedTable: 'chapters', ascending: true); 
+        .order('created_at', referencedTable: 'chapters', ascending: true);
     
-    // ✅ Le parsing fonctionne car 'Novel.fromJson' est déjà conçu
-    // pour lire une liste 'chapters' dans le JSON.
     final novels = novelsData.map((novelRow) {
       return Novel.fromJson(novelRow);
     }).toList();
     
     _lastFetch = now;
+    _cachedUserId = userId; // <-- ✅ Stocke l'ID de l'utilisateur avec le cache
     return _sortNovels(novels);
   }
 
@@ -163,7 +166,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
   Map<String, dynamic> _novelToSupabaseJson(Novel novel, String userId) {
     final data = novel.toJson();
     data['user_id'] = userId;
-    // Ne pas inclure les chapters dans l'update du novel
     data.remove('chapters');
     return data;
   }
@@ -183,8 +185,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       await supabase.from('novels').insert(novelData);
       
       // 2. Insérer les chapitres
-      // (Cette partie doit rester car on ne peut pas 'créer' 
-      // un roman et ses chapitres en une seule requête)
       if (novel.chapters.isNotEmpty) {
         final chaptersData = novel.chapters.map((chapter) {
           final chapterJson = chapter.toJson();
@@ -196,6 +196,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       }
       
       _lastFetch = DateTime.now(); 
+      _cachedUserId = userId; // <-- ✅ Met à jour le user du cache
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de l'ajout, rechargement...");
       state = await AsyncValue.guard(() => build());
@@ -235,6 +236,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       }
       
       _lastFetch = DateTime.now();
+      _cachedUserId = userId; // <-- ✅ Met à jour le user du cache
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la mise à jour, rechargement...");
       state = await AsyncValue.guard(() => build());
@@ -260,10 +262,9 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = AsyncValue.data(currentNovels.where((n) => n.id != novelId).toList());
     
     try {
-      // En supprimant le roman, les chapitres liés 
-      // seront supprimés aussi (si 'on delete cascade' est activé sur la clé étrangère)
       await supabase.from('novels').delete().eq('id', novelId);
       _lastFetch = DateTime.now();
+      _cachedUserId = supabase.auth.currentUser?.id; // <-- ✅ Met à jour le user du cache
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la suppression, rechargement...");
       state = await AsyncValue.guard(() => build());
@@ -273,6 +274,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
   
   Future<void> refresh() async {
     _lastFetch = null; 
+    _cachedUserId = null; // <-- ✅ Vide aussi le user du cache
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => build());
   }
