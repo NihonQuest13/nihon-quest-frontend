@@ -1,4 +1,57 @@
-// lib/services/ai_service.dart (RÉVISION APPROFONDIE DE LA LOGIQUE AI)
+// lib/services/ai_service.dart (Logique de Contexte C5+ Corrigée)
+
+// --- LOGIQUE DE CONTEXTE VOULUE (POUR FUTURES IA) ---
+//
+// Le but est de fournir à l'IA une hiérarchie de contexte claire et non-contradictoire
+// pour assurer la continuité narrative à chaque étape.
+//
+// Chapitre 1 (C1) : 
+// Tâche : "Écris le C1"
+// Contexte : 
+//   - Spécifications du Roman (Genre, Niveau, Specs, etc.)
+//   - Future Outline (Plan directeur futur, s'il existe)
+//
+// Chapitre 2 (C2) :
+// Tâche : "Écris le C2"
+// Contexte :
+//   - Ancrage Immédiat (Dernière phrase du C1)
+//   - Contexte Passé Immédiat (Contenu complet du C1)
+//   - Future Outline (Plan directeur)
+//   - Spécifications du Roman (Règles globales)
+//
+// Chapitre 3 (C3) :
+// Tâche : "Écris le C3"
+// Contexte :
+//   - Ancrage Immédiat (Dernière phrase du C2)
+//   - Contexte Passé Immédiat (Contenu complet du C2)
+//   - Future Outline (Plan directeur)
+//   - Contexte Pertinent (Contenu du C1, récupéré par Faiss)
+//   - Spécifications du Roman (Règles globales)
+//
+// Chapitre 4 (C4) :
+// Tâche : "Écris le C4"
+// Contexte :
+//   - Ancrage Immédiat (Dernière phrase du C3)
+//   - Contexte Passé Immédiat (Contenu complet du C3)
+//   - Future Outline (Plan directeur)
+//   - Contexte Pertinent (Contenu du C1, C2, récupéré par Faiss)
+//   - Spécifications du Roman (Règles globales)
+//
+// Chapitre 5 et suivants (C5+) :
+// Tâche : "Écris le C(N)"
+// Contexte :
+//   - Ancrage Immédiat (Dernière phrase du C(N-1))
+//   - Contexte Passé Immédiat (Contenu complet du C(N-1)) <-- CRUCIAL
+//   - Contexte Passé Global (Le "Roadmap" / Résumé de C1 à C(N-2))
+//   - Future Outline (Plan directeur)
+//   - Contexte Pertinent (Extraits de C1, C2, C3... récupérés par Faiss)
+//   - Spécifications du Roman (Règles globales)
+//
+// La correction (MODIFICATION 3) ci-dessous implémente cette logique, 
+// en s'assurant que le "Contexte Passé Immédiat" (le dernier chapitre complet)
+// n'est JAMAIS supprimé, même lorsque le "Roadmap" (résumé) est disponible.
+// --- FIN DE LA LOGIQUE DE CONTEXTE ---
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -49,12 +102,15 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
         const int topK = 2;
         
         if (chaptersInIndex > 1) {
+            // On cherche les chapitres similaires au dernier chapitre
             final similarChapters = await localContextService.getContext(
                 novelId: novel.id, 
                 query: lastChapterContent, 
+                // On demande K+1 pour exclure le dernier chapitre lui-même (qui sera le plus similaire)
                 topK: (chaptersInIndex < topK + 1) ? chaptersInIndex : topK + 1 
             );
 
+            // On retire le résultat le plus similaire (qui est le chapitre lui-même)
             if (similarChapters.length > 1) {
                 relevantContextChapters = similarChapters.sublist(1);
             }
@@ -65,6 +121,7 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
     }
   }
 
+  // --- MODIFICATION 3 : Appel à la logique de prompt C5+ ---
   final String prompt = AIService._buildChapterPrompt(
     novel: novel,
     isFirstChapter: isFirstChapter,
@@ -74,13 +131,10 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
     lastChapterContent: lastChapterContent,
     similarChapters: relevantContextChapters,
     lastSentence: lastSentence,
-    roadMap: novel.roadMap,
-    futureOutline: novel.futureOutline,
+    roadMap: novel.roadMap, // Passé depuis C5+
+    futureOutline: novel.futureOutline, // Passé à toutes les étapes
   );
-  
-  // Pour déboguer le prompt final :
-  // debugPrint("----- PROMPT PRÉPARÉ (Taille: ${prompt.length}) -----");
-  // debugPrint(prompt);
+  // --- FIN MODIFICATION 3 ---
   
   localContextService.dispose();
   return prompt;
@@ -209,7 +263,7 @@ class AIService {
     return controller.stream;
   }
 
-  // --- [AUCUNE MODIFICATION] ---
+  // --- ⬇️ MODIFICATION (AJOUT DU BLOC DE DÉBOGAGE) ⬇️ ---
   static Future<void> generateNextChapter(
     Novel novel,
     BuildContext context,
@@ -224,6 +278,18 @@ class AIService {
       isFirstChapter: isFirstChapter,
       isFinalChapter: false,
     );
+
+    // --- ⬇️ AJOUT POUR LE DÉBOGAGE DU PROMPT ⬇️ ---
+    // Cela affichera le prompt complet dans votre console de débogage.
+    debugPrint("=========================================================");
+    debugPrint("           PROMPT FINAL ENVOYÉ À L'IA                   ");
+    debugPrint("           (Généré par l'isolate)                     ");
+    debugPrint("=========================================================");
+    debugPrint(prompt);
+    debugPrint("---------------------------------------------------------");
+    debugPrint("Taille du prompt : ${prompt.length} caractères");
+    debugPrint("=========================================================");
+    // --- ⬆️ FIN DE L'AJOUT ⬆️ ---
 
     if (!context.mounted) return;
 
@@ -255,6 +321,12 @@ class AIService {
       novel.updatedAt = DateTime.now();
       
       await ref.read(novelsProvider.notifier).updateNovel(novel);
+
+      // TODO: C'est ici qu'il faudrait appeler la mise à jour du Roadmap
+      // par exemple : 
+      // if (novel.chapters.length >= 3) {
+      //   ref.read(novelsProvider.notifier).updateNovelRoadmap(novel);
+      // }
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -282,6 +354,8 @@ class AIService {
       throw ApiException("Échec de la génération du chapitre: $e");
     }
   }
+  // --- ⬆️ FIN DE LA MODIFICATION (DÉBOGAGE) ⬆️ ---
+
 
   // --- [AUCUNE MODIFICATION] ---
   static Future<String> generateFutureOutline(Novel novel) async {
@@ -328,29 +402,41 @@ class AIService {
   }
 
   // --- [AUCUNE MODIFICATION] ---
+  // Ceci est un "bouchon" (stub). Il doit être remplacé par un véritable appel au backend.
   static Future<String> updateRoadMap(Novel novel) async {
     debugPrint("Appel à updateRoadMap (résumé du PASSÉ)...");
+    
+    // !! ATTENTION !! : 
+    // Ceci est un bouchon. Il ne contacte pas le backend.
+    // Il renvoie simplement la valeur existante, ou un message par défaut.
+    // C'est pourquoi votre roadmap n'est pas générée.
     return novel.roadMap ?? "Le résumé du passé sera mis à jour par le backend.";
   }
 
-  // --- [AUCUNE MODIFICATION] ---
+  // --- [AUCUNE MODIFICATION - MAIS CORRECTION ENDPOINT] ---
   static Future<Map<String, String?>> getReadingAndTranslation(String word, SharedPreferences prefs) async {
      debugPrint("Appel du backend pour traduction de : $word");
 
      try {
         final response = await _client.post(
-          Uri.parse('$_backendUrl/get_reading_translation'),
+          // Note: L'endpoint /get_reading_translation n'existe pas dans le router.py fourni
+          // Il a été remplacé par /translate
+          Uri.parse('$_backendUrl/translate'), 
           headers: {'Content-Type': 'application/json; charset=utf-8'},
-          body: jsonEncode({'word': word}),
+          body: jsonEncode({
+            'word': word,
+            'target_lang': 'FR', // Langue cible par défaut
+            }),
         ).timeout(const Duration(seconds: 20));
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+          // Le backend /translate renvoie 'word' et 'translation'
           return {
-            'reading': data['reading'],
+            'reading': null, // La lecture n'est pas gérée par /translate
             'translation': data['translation'],
-            'readingError': data['readingError'],
-            'translationError': data['translationError'],
+            'readingError': 'Service de lecture non disponible',
+            'translationError': null,
           };
         } else {
           final errorMsg = _extractApiError(response);
@@ -464,7 +550,9 @@ class AIService {
     );
   }
 
-  // --- ⬇️ MODIFICATION 2 (Correction Bug n°1 et n°2 : Segmentation du Prompt) ⬇️ ---
+  // --- ⬇️ MODIFICATION 3 (Logique de Contexte C5+) ⬇️ ---
+  // Cette fonction remplace l'ancienne logique (Bug #1 et #2)
+  // pour suivre la hiérarchie C1 -> C5+ demandée.
   static String _buildChapterPrompt({
     required Novel novel,
     required bool isFirstChapter,
@@ -478,15 +566,15 @@ class AIService {
     String? futureOutline,
   }) {
     // === PARTIE 1 : Instructions communes ===
-    // (Style, langue, niveau, genre, etc.)
+    // (Contient les 'spec du roman' via [NOVEL_SPECIFICATIONS])
     String commonInstructions = languagePrompts.commonInstructions
         .replaceAll('[NOVEL_LEVEL]', novel.level)
         .replaceAll('[NOVEL_GENRE]', novel.genre)
         .replaceAll('[NOVEL_SPECIFICATIONS]', novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications)
         .replaceAll('[NOVEL_LANGUAGE]', novel.language);
 
-    // === PARTIE 2 : Cas spécial du PREMIER chapitre ===
-    // Ce cas est simple car il n'y a pas de contexte passé.
+    // === PARTIE 2 : Cas C1 (PREMIER chapitre) ===
+    // Logique C1 : spec du roman + future outline
     if (isFirstChapter) {
       String intro = languagePrompts.firstChapterIntro
           .replaceAll('[NOVEL_TITLE]', novel.title);
@@ -498,28 +586,27 @@ class AIService {
       buffer.writeln("- Titre: ${novel.title}");
       buffer.writeln("- Niveau: ${novel.level}");
       buffer.writeln("- Genre: ${novel.genre}");
+      // 'spec du roman'
       buffer.writeln("- Spécifications: ${novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications}");
 
-      // Contexte futur (le seul contexte disponible)
+      // 'future outline'
       if (futureOutline != null && futureOutline.isNotEmpty) {
         buffer.writeln("\n--- CONTEXTE FUTUR (GUIDE) ---");
         buffer.writeln(languagePrompts.futureOutlineHeader);
         buffer.writeln(futureOutline);
-        buffer.writeln(languagePrompts.futureOutlinePriorityRule); // Règle de priorité
+        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
       }
       
-      // Règles et format
       buffer.writeln("\n--- RÈGLES DE GÉNÉRATION ---");
-      buffer.writeln(commonInstructions);
+      buffer.writeln(commonInstructions); // Contient aussi les 'spec'
       buffer.writeln("\n--- FORMAT DE SORTIE ---");
       buffer.writeln(languagePrompts.outputFormatFirst);
       return buffer.toString();
     }
     
-    // === PARTIE 3 : Cas des chapitres SUIVANTS (Chap 2+) ===
-    // C'est ici que la segmentation est cruciale.
+    // === PARTIE 3 : Cas C2 et suivants (Chap 2+) ===
 
-    // 1. Définition de la TÂCHE
+    // 1. Définition de la TÂCHE (avec le bon numéro de chapitre)
     final String intro = isFinalChapter
         ? languagePrompts.finalChapterIntro
         : languagePrompts.nextChapterIntro.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
@@ -534,10 +621,10 @@ class AIService {
     
     // --- SEGMENT 1 : LA TÂCHE ---
     buffer.writeln("--- TÂCHE ---");
-    buffer.writeln(intro);
+    buffer.writeln(intro); // Ex: "Écrivez le chapitre suivant (Chapitre 2)"
 
     // --- SEGMENT 2 : ANCRAGE IMMÉDIAT (PRIORITÉ ABSOLUE) ---
-    // C'est la boussole à très court terme.
+    // Logique C2+ : 'Dernière phrase C(N-1)'
     if (lastSentence != null && lastSentence.isNotEmpty) {
         buffer.writeln("\n--- ANCRAGE IMMÉDIAT (PRIORITÉ ABSOLUE) ---");
         buffer.writeln(languagePrompts.contextLastSentenceHeader);
@@ -548,36 +635,37 @@ class AIService {
     }
 
     // --- SEGMENT 3 : CONTEXTE PASSÉ (MÉMOIRE) ---
-    // ✅ CORRECTION BUG n°1 : On ne fournit qu'UN SEUL type de contexte passé.
-    // Le Roadmap (résumé) est prioritaire s'il existe (Chap 4+).
-    // Sinon, on se rabat sur le chapitre précédent complet (Chap 2-3).
-    buffer.writeln("\n--- CONTEXTE PASSÉ (MÉMOIRE) ---");
-    if (roadMap != null && roadMap.isNotEmpty) {
-      buffer.writeln(languagePrompts.roadmapHeader);
-      buffer.writeln(roadMap);
-    } else if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
+    
+    // Logique C2+ : 'Contenu C(N-1)'
+    // On fournit TOUJOURS le chapitre précédent (contexte court terme)
+    buffer.writeln("\n--- CONTEXTE PASSÉ (MÉMOIRE IMMÉDIATE) ---");
+    if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
       final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
       buffer.writeln(header);
       buffer.writeln(lastChapterContent);
     } else {
       buffer.writeln("[AVERTISSEMENT: Le contexte du chapitre précédent est manquant.]");
     }
-    // --- FIN CORRECTION BUG n°1 ---
 
+    // Logique C5+ : 'Roadmap'
+    // ON AJOUTE le roadmap (contexte long terme) s'il existe.
+    if (roadMap != null && roadMap.isNotEmpty) {
+      buffer.writeln("\n--- CONTEXTE PASSÉ (RÉSUMÉ GLOBAL) ---"); // Titre distinct
+      buffer.writeln(languagePrompts.roadmapHeader);
+      buffer.writeln(roadMap);
+    }
+    
     // --- SEGMENT 4 : CONTEXTE FUTUR (GUIDE) ---
-    // C'est la carte routière à long terme.
+    // Logique C2+ : 'future outline'
     if (futureOutline != null && futureOutline.isNotEmpty) {
       buffer.writeln("\n--- CONTEXTE FUTUR (GUIDE) ---");
       buffer.writeln(languagePrompts.futureOutlineHeader);
       buffer.writeln(futureOutline);
-      
-      // ✅ CORRECTION BUG n°2 : On ajoute la règle de priorité qui manquait ici.
       buffer.writeln(languagePrompts.futureOutlinePriorityRule);
-      // --- FIN CORRECTION BUG n°2 ---
     }
     
     // --- SEGMENT 5 : CONTEXTE PERTINENT (FAISS) ---
-    // Ce sont des "flashbacks" de chapitres pertinents.
+    // Logique C3+ : 'Chapitres pertinents (C1, C2, etc.)'
     if (similarChapters != null && similarChapters.isNotEmpty) {
       buffer.writeln("\n--- CONTEXTE PERTINENT (EXTRAITS DE LA MÉMOIRE) ---");
       buffer.writeln(languagePrompts.contextSimilarSectionHeader);
@@ -588,14 +676,15 @@ class AIService {
     }
       
     // --- SEGMENT 6 : RÈGLES ET FORMAT ---
+    // Logique C2+ : 'spec du roman' (via commonInstructions)
     buffer.writeln("\n--- RÈGLES DE GÉNÉRATION ---");
     buffer.writeln(commonInstructions);
     buffer.writeln(finalChapterInstructions);
     
     buffer.writeln("\n--- FORMAT DE SORTIE ---");
-    buffer.writeln(outputFormat);
+    buffer.writeln(outputFormat); // Ex: "Chapitre 2: [Titre]"
 
     return buffer.toString();
   }
-  // --- ⬆️ FIN MODIFICATION 2 ⬆️ ---
+  // --- ⬆️ FIN MODIFICATION 3 ⬆️ ---
 }

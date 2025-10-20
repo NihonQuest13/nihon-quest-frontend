@@ -8,13 +8,9 @@ const String kDefaultModelId = 'qwen/qwen3-235b-a22b:free';
 /// La liste centralisée des "écrivains" (modèles IA) disponibles pour la sélection.
 /// Modifiez cette map pour ajouter ou changer les modèles dans toute l'application.
 final Map<String, Map<String, String>> kWritersMap = {
-  'meituan/longcat-flash-chat:free': {
-    'name': 'Longcat (Phase de test)',
-    'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
-  },
   'qwen/qwen3-235b-a22b:free': {
-    'name': 'Qwen 3.5B (Phase de test - recommandé)',
-    'description': 'Vous le verez penser et raisonner, mais il est encore en phase de test. Le meilleur choix actuellement.',
+    'name': 'Qwen 3.5B (Recommandé)',
+    'description': 'Vous le verez penser et raisonner, ce qui peut prendre plus de temps. Le meilleur choix actuellement pour la qualité.',
   },
   'meta-llama/llama-3.3-70b-instruct:free': {
     'name': 'Llama (Phase de test)',

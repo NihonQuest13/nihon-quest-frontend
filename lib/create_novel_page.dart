@@ -1,4 +1,5 @@
-// lib/create_novel_page.dart (CORRIGÉ)
+// lib/create_novel_page.dart (MODIFIÉ POUR LE STREAMING ET CORRIGÉ)
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,9 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models.dart';
 import 'config.dart';
 import 'providers.dart';
-// import 'services/roadmap_service.dart'; // <-- 2. IMPORT INUTILISÉ SUPPRIMÉ
 import 'services/ai_service.dart';
-import 'novel_reader_page.dart'; // <-- 1. IMPORT AJOUTÉ
+import 'novel_reader_page.dart';
+import 'widgets/streaming_text_widget.dart';
+import 'widgets/optimized_common_widgets.dart';
+import 'utils/app_logger.dart';
 
 class CreateNovelPage extends ConsumerStatefulWidget {
   const CreateNovelPage({super.key});
@@ -28,7 +31,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
   String _selectedLanguage = 'Japonais';
   late String _selectedLevel;
   String _selectedGenre = 'Fantasy';
-  String _selectedModelId = kDefaultModelId; 
+  String _selectedModelId = kDefaultModelId;
 
   final Map<String, List<String>> _languageLevels = {
     'Anglais': ['A1 (Beginner)', 'A2 (Elementary)', 'B1 (Intermediate)', 'B2 (Advanced)', 'C1 (Proficient)', 'C2 (Mastery)', 'Native'],
@@ -59,82 +62,151 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     super.dispose();
   }
 
-  // --- ⬇️ MODIFICATION DE LA LOGIQUE DE CRÉATION ET NAVIGATION ⬇️ ---
-  Future<void> _createNovel() async {
+  Future<void> _submitForm() async {
     if (!(_formKey.currentState?.validate() ?? false) || _isLoading) {
       return;
     }
-
+    
     setState(() => _isLoading = true);
 
+    await _generateNovelWithStreamingDialog();
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _generateNovelWithStreamingDialog() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
 
     if (userId == null) {
-      if (context.mounted) {
+      if (mounted) { // ✅ SÉCURITÉ : Vérification du contexte
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Erreur : Utilisateur non connecté. Reconnexion..."),
+            content: Text("Erreur : Utilisateur non connecté."),
             backgroundColor: Colors.red,
           ),
         );
       }
-      setState(() => _isLoading = false);
       return;
     }
 
-    // On crée l'objet Novel initial
-    final newNovel = Novel(
-      user_id: userId,
-      title: _titleController.text.trim(),
-      level: _selectedLevel,
-      genre: _selectedGenre,
-      specifications: _specificationsController.text.trim(),
-      language: _selectedLanguage,
-      modelId: _selectedModelId,
-      createdAt: DateTime.now(),
-      summaries: [],
-    );
+    // ✅ CORRIGÉ : On récupère le service roadmapServiceProvider
+    final roadmapService = ref.read(roadmapServiceProvider);
+
+    final String title = _titleController.text.trim();
+    final String specifications = _specificationsController.text.trim();
+    final String language = _selectedLanguage;
+    final String level = _selectedLevel;
+    final String genre = _selectedGenre;
+    final String modelId = _selectedModelId;
+    
+    final Completer<String> textCompleter = Completer<String>();
+    String generatedPlan = "";
 
     try {
-      // Étape 1: Sauvegarder le roman initial (0 chapitres)
-      await ref.read(novelsProvider.notifier).addNovel(newNovel);
-      if (!context.mounted) return;
+      final String planPrompt = roadmapService.getPlanPrompt(
+        title: title,
+        userPreferences: specifications,
+        language: language,
+        level: level,
+        genre: genre,
+        modelId: modelId,
+        userId: userId,
+      );
 
-      // Étape 2: Générer le plan directeur.
-      // Le service met à jour le 'newNovel' en mémoire ET dans la BDD.
-      await ref.read(roadmapServiceProvider).triggerFutureOutlineUpdateIfNeeded(newNovel, context);
-      if (!context.mounted) return; 
+      // ✅ CORRIGÉ : Appel direct à la méthode statique de AIService
+      final Stream<String> generationStream = AIService.streamChapterFromPrompt(
+        prompt: planPrompt,
+        modelId: modelId,
+        language: language,
+      );
 
-      // Étape 3: Générer le chapitre 1.
-      // Ce service ajoute le chapitre 1 au 'newNovel' en mémoire ET le sauvegarde dans la BDD.
+      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text("Génération du plan en cours..."),
+            content: SizedBox( // ✅ CORRIGÉ : Remplacement de Container par SizedBox
+              width: MediaQuery.of(context).size.width * 0.8,
+              height: MediaQuery.of(context).size.height * 0.6,
+              child: SingleChildScrollView(
+                // ✅ CORRIGÉ : Renommage de StreamingTextWidget en StreamingTextAnimation
+                child: StreamingTextAnimation(
+                  stream: generationStream,
+                  onDone: (fullText) {
+                    textCompleter.complete(fullText);
+                    if (Navigator.of(dialogContext).canPop()) {
+                       Navigator.of(dialogContext).pop();
+                    }
+                  },
+                  onError: (error) {
+                    textCompleter.completeError(error);
+                    if (Navigator.of(dialogContext).canPop()) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      generatedPlan = await textCompleter.future;
+
+      if (generatedPlan.trim().isEmpty) {
+        throw Exception("La génération du plan a échoué ou a retourné un texte vide.");
+      }
+
+      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        // ✅ CORRIGÉ : Remplacement de LoadingIndicator par LoadingWidget et ajout de `const`
+        builder: (context) => const Center(child: LoadingWidget(message: "Finalisation..."),),
+      );
+
+      final Novel newNovel = await roadmapService.createNovelFromPlan(
+        userId: userId,
+        title: title,
+        specifications: specifications,
+        language: language,
+        level: level,
+        genre: genre,
+        modelId: modelId,
+        generatedPlan: generatedPlan,
+      );
+
+      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
       await AIService.generateNextChapter(newNovel, context, ref);
-      if (!context.mounted) return;
-
-      // --- NOUVELLE LOGIQUE DE NAVIGATION ---
-      // Maintenant que tout est terminé, on va chercher la version finale du roman
-      // directement depuis le provider pour s'assurer qu'elle est 100% à jour.
-      final allNovels = await ref.read(novelsProvider.future);
-      final finalNovel = allNovels.firstWhere((n) => n.id == newNovel.id, orElse: () => newNovel);
-
-      if (!context.mounted) return; 
-
-      // On ferme la page de création...
+      
+      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
       Navigator.of(context).pop();
-      // ...et on ouvre immédiatement la page de lecture avec le roman complet.
-      // ✅ APPEL CORRIGÉ
+
+      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
+      Navigator.of(context).pop();
+
+      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => NovelReaderPage(
-            novelId: finalNovel.id,
+            novelId: newNovel.id,
             vocabularyService: ref.read(vocabularyServiceProvider),
             themeService: themeService,
           ),
         ),
       );
 
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    } catch (e, stackTrace) {
+      // ✅ CORRIGÉ : Renommage de logError en error
+      AppLogger.error("Échec lors de la création du roman", error: e, stackTrace: stackTrace);
+      if (mounted) { // ✅ SÉCURITÉ : Vérification du contexte
+        if (Navigator.of(context).canPop()) {
+           Navigator.of(context).pop(); // Ferme le loading dialog s'il est ouvert
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Erreur lors de la création : ${e.toString()}"),
@@ -142,13 +214,8 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
-  // --- ⬆️ FIN DE LA MODIFICATION ⬆️ ---
 
   @override
   Widget build(BuildContext context) {
@@ -163,7 +230,6 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
         child: ListView(
           padding: const EdgeInsets.all(20.0),
           children: [
-            // Title
             TextFormField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -175,8 +241,6 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                   (value == null || value.trim().isEmpty) ? 'Veuillez entrer un titre' : null,
             ),
             const SizedBox(height: 20),
-
-            // Writer selection
             DropdownButtonFormField<String>(
               value: _selectedModelId,
               decoration: const InputDecoration(
@@ -217,8 +281,6 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
               },
             ),
             const SizedBox(height: 20),
-
-            // Language and Level
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -258,8 +320,6 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
               ],
             ),
             const SizedBox(height: 20),
-
-            // Genre
             DropdownButtonFormField<String>(
               value: _selectedGenre,
               decoration: const InputDecoration(labelText: 'Genre', prefixIcon: Icon(Icons.category_outlined)),
@@ -271,8 +331,6 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
               },
             ),
             const SizedBox(height: 20),
-
-            // Specifications
             TextFormField(
               controller: _specificationsController,
               decoration: const InputDecoration(
@@ -284,8 +342,6 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
               maxLines: 5,
             ),
             const SizedBox(height: 32),
-
-            // Submit Button
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
@@ -299,7 +355,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                     )
                   : const Icon(Icons.auto_awesome),
               label: Text(_isLoading ? 'Création en cours...' : 'Commencer l\'aventure'),
-              onPressed: _isLoading ? null : _createNovel,
+              onPressed: _isLoading ? null : _submitForm,
             ),
           ],
         ),

@@ -1,4 +1,5 @@
 // lib/services/ai_prompts.dart
+// (CORRIGÉ AVEC ANCRAGE RENFORCÉ)
 
 /// Contient tous les prompts pour une langue spécifique.
 class LanguagePrompts {
@@ -14,7 +15,7 @@ class LanguagePrompts {
   final String contextLastChapterHeader;
   final String contextSimilarSectionHeader;
   final String contextLastSentenceHeader;
-  final String contextFollowInstruction;
+  final String contextFollowInstruction; // <-- C'EST CETTE LIGNE QUI EST MODIFIÉE
   final String outputFormatFirst;
   final String outputFormatNext;
   final String outputFormatFinal;
@@ -143,7 +144,9 @@ const LanguagePrompts _englishPrompts = LanguagePrompts(
   contextLastChapterHeader: "Last Chapter (Chapter [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Relevant Context:",
   contextLastSentenceHeader: "As a reminder, the last sentence was:",
-  contextFollowInstruction: "\n**Absolute Priority:** The story must be a direct and logical continuation of the last sentence, while remaining consistent with the content of the last chapter and the relevant context provided.",
+  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
+  contextFollowInstruction: "\n**ABSOLUTE PRIORITY (ANCHORING):** The new chapter must begin **exactly where the previous one left off**. Your first sentence must be the **immediate and direct** continuation of this last sentence: \"[LAST_SENTENCE]\" (which was just provided). Do NOT time-skip (no \"The next morning...\" or sudden location changes).",
+  // --- ⬆️ FIN MODIFICATION ⬆️ ---
   outputFormatFirst: '''
  Required output format (do not write anything before this line):
  Chapter 1: [An engaging title for this first chapter]
@@ -283,7 +286,9 @@ const LanguagePrompts _frenchPrompts = LanguagePrompts(
   contextLastChapterHeader: "Dernier chapitre (Chapitre [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Contexte pertinent :",
   contextLastSentenceHeader: "Pour rappel, la dernière phrase était :",
-  contextFollowInstruction: "\n**Priorité absolue :** La suite doit être une continuation directe et logique de la dernière phrase, tout en restant cohérente avec le contenu du dernier chapitre et le contexte pertinent fourni.",
+  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
+  contextFollowInstruction: "\n**PRIORITÉ ABSOLUE (ANCRAGE) :** Le nouveau chapitre doit commencer **exactement là où le précédent s'est arrêté**. Votre première phrase doit être la suite **immédiate et directe** de cette dernière phrase : \"[LAST_SENTENCE]\" (qui vient d'être fournie). Ne sautez PAS dans le temps (pas de \"Le lendemain matin...\" ou de changement soudain de lieu).",
+  // --- ⬆️ FIN MODIFICATION ⬆️ ---
   outputFormatFirst: '''
  Format de sortie requis (n'écrivez rien avant cette ligne) :
  Chapitre 1 : [Un titre captivant pour ce premier chapitre]
@@ -413,7 +418,9 @@ Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR
   contextLastChapterHeader: "Último capítulo (Capítulo [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Contexto relevante:",
   contextLastSentenceHeader: "Como recordatorio, la última frase fue:",
-  contextFollowInstruction: "\n**Prioridad absoluta:** La historia debe ser una continuación directa y lógica de la última frase.",
+  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
+  contextFollowInstruction: "\n**PRIORIDAD ABSOLUTA (ANCLAJE):** El nuevo capítulo debe comenzar **exactamente donde terminó el anterior**. Tu primera frase debe ser la continuación **inmediata y directa** de esta última frase: \"[LAST_SENTENCE]\" (que se acaba de proporcionar). NO saltes en el tiempo (nada de \"A la mañana siguiente...\" o cambios bruscos de ubicación).",
+  // --- ⬆️ FIN MODIFICATION ⬆️ ---
   outputFormatFirst: 'Formato requerido:\nCapítulo 1: [Título atractivo]\n\n[Contenido del Capítulo 1 aquí...]',
   outputFormatNext: 'Formato requerido:\nCapítulo [NEXT_CHAPTER_NUMBER]: [Título interesante]\n\n[Contenido del Capítulo [NEXT_CHAPTER_NUMBER] aquí...]',
   outputFormatFinal: 'Formato requerido:\nCapítulo Final: [Título emotivo]\n\n[Contenido del capítulo final aquí...]',
@@ -495,7 +502,9 @@ Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À 
   contextLastChapterHeader: "Ultimo capitolo (Capitolo [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Contesto rilevante:",
   contextLastSentenceHeader: "Per promemoria, l'ultima frase era:",
-  contextFollowInstruction: "\n**Priorità assoluta:** La storia deve essere una continuazione diretta e logica dell'ultima frase.",
+  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
+  contextFollowInstruction: "\n**PRIORITÀ ASSOLUTA (ANCORAGGIO):** Il nuovo capitolo deve iniziare **esattamente dove si è interrotto il precedente**. La tua prima frase deve essere la continuazione **immediata e diretta** di quest'ultima frase: \"[LAST_SENTENCE]\" (appena fornita). NON saltare nel tempo (niente \"La mattina dopo...\" o cambi improvvisi di luogo).",
+  // --- ⬆️ FIN MODIFICATION ⬆️ ---
   outputFormatFirst: 'Formato richiesto:\nCapitolo 1: [Titolo accattivante]\n\n[Contenuto del Capitolo 1 qui...]',
   outputFormatNext: 'Formato richiesto:\nCapitolo [NEXT_CHAPTER_NUMBER]: [Titolo interessante]\n\n[Contenuto del Capitolo [NEXT_CHAPTER_NUMBER] qui...]',
   outputFormatFinal: 'Formato richiesto:\nCapitolo Finale: [Titolo commovente]\n\n[Contenuto del capitolo finale qui...]',
@@ -577,7 +586,9 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
   contextLastChapterHeader: "마지막 장 (챕터 [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "관련 문맥:",
   contextLastSentenceHeader: "참고로 마지막 문장은 다음과 같았습니다:",
-  contextFollowInstruction: "\n**절대적 우선순위:** 이야기는 마지막 문장의 직접적이고 논리적인 연속이어야 합니다.",
+  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
+  contextFollowInstruction: "\n**절대적 우선순위 (앵커링):** 새 챕터는 **이전 챕터가 끝난 지점에서 정확히** 시작해야 합니다. 첫 문장은 방금 제공된 마지막 문장인 \"[LAST_SENTENCE]\"의 **즉각적이고 직접적인** 연속이어야 합니다. 시간을 건너뛰지 마십시오(예: \"다음 날 아침...\" 또는 갑작스러운 장소 변경 금지).",
+  // --- ⬆️ FIN MODIFICATION ⬆️ ---
   outputFormatFirst: '필수 형식:\n제 1 장: [매력적인 제목]\n\n[제 1 장 내용...]',
   outputFormatNext: '필수 형식:\n제 [NEXT_CHAPTER_NUMBER] 장: [흥미로운 제목]\n\n[제 [NEXT_CHAPTER_NUMBER] 장 내용...]',
   outputFormatFinal: '필수 형식:\n마지막 장: [감동적인 제목]\n\n[마지막 장 내용...]',
@@ -672,7 +683,9 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
   contextLastChapterHeader: "前の章 (第[CHAPTER_NUMBER]章):",
   contextSimilarSectionHeader: "関連コンテキスト:",
   contextLastSentenceHeader: "念のため、最後の文は次のとおりでした:",
-  contextFollowInstruction: "\n**最優先事項:** 物語は、提供された最後の文の直接的かつ論理的な続きである必要があり、同時に前の章の内容および関連コンテキストと一貫性を保つ必要があります。",
+  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
+  contextFollowInstruction: "\n**最優先事項 (アンカリング):** 新しい章は、**前の章が終わった場所から正確に**始めなければなりません。最初の一文は、提供された最後の文「[LAST_SENTENCE]」の**即時かつ直接的**な続きである必要があります。時間をスキップしないでください（「翌朝...」や突然の場所の変更は禁止です）。",
+  // --- ⬆️ FIN MODIFICATION ⬆️ ---
   outputFormatFirst: '''
  必須出力フォーマット（この行より前に何も書かないでください）：
  第一章 : [この最初の章に適した魅力的なタイトル]
