@@ -26,4 +26,3 @@ const String kBaseUrl = kDebugMode
     ? 'http://127.0.0.1:8000'
     // ✅ URL DE PRODUCTION CORRIGÉE
     : 'https://nihon-quest-api.onrender.com';
-    
