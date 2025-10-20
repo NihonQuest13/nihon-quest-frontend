@@ -1,4 +1,4 @@
-// lib/services/ai_service.dart (CORRIGÉ ET AMÉLIORÉ)
+// lib/services/ai_service.dart (RÉVISION APPROFONDIE DE LA LOGIQUE AI)
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -10,13 +10,12 @@ import 'local_context_service.dart';
 import 'ai_prompts.dart';
 import '../config.dart';
 
-// --- AJOUTS NÉCESSAIRES ---
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
-// --- FIN DES AJOUTS ---
 
 
+// --- ⬇️ MODIFICATION 1 (Correction Bug n°3 : Regex) ⬇️ ---
 Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
   final novel = Novel.fromJson(jsonDecode(data['novel_json']));
   final isFirstChapter = data['isFirstChapter'] as bool;
@@ -35,14 +34,18 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
   if (!isFirstChapter && novel.chapters.isNotEmpty) {
     lastChapterContent = novel.chapters.last.content;
     if (lastChapterContent.isNotEmpty) {
-      final sentences = lastChapterContent.trim().split(RegExp(r'(?<=[.?!])\s+'));
+      
+      // ✅ CORRECTION BUG n°3 : Ajout des ponctuations japonaises/coréennes
+      // et gestion des espaces optionnels (ou absents) après la ponctuation.
+      final sentences = lastChapterContent.trim().split(RegExp(r'(?<=[.?!。？！…])\s*'));
+      // --- FIN CORRECTION ---
+
       if (sentences.isNotEmpty) {
         lastSentence = sentences.last.trim();
       }
       
       try {
         final int chaptersInIndex = novel.chapters.length;
-        
         const int topK = 2;
         
         if (chaptersInIndex > 1) {
@@ -75,10 +78,14 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
     futureOutline: novel.futureOutline,
   );
   
-  debugPrint("----- PROMPT PRÉPARÉ DANS L'ISOLATE -----");
+  // Pour déboguer le prompt final :
+  // debugPrint("----- PROMPT PRÉPARÉ (Taille: ${prompt.length}) -----");
+  // debugPrint(prompt);
+  
   localContextService.dispose();
   return prompt;
 }
+// --- ⬆️ FIN MODIFICATION 1 ⬆️ ---
 
 class ApiException implements Exception {
   final String message;
@@ -108,6 +115,7 @@ class AIService {
 
   static final http.Client _client = http.Client();
 
+  // --- [AUCUNE MODIFICATION] ---
   static Future<String> preparePrompt({
     required Novel novel,
     required bool isFirstChapter,
@@ -122,6 +130,7 @@ class AIService {
     return await compute(_preparePromptIsolate, data);
   }
 
+  // --- [AUCUNE MODIFICATION] ---
   static Stream<String> streamChapterFromPrompt({
     required String prompt,
     required String? modelId,
@@ -200,7 +209,7 @@ class AIService {
     return controller.stream;
   }
 
-  /// Génère le prochain chapitre (ou le premier) et le sauvegarde dans l'état de l'application.
+  // --- [AUCUNE MODIFICATION] ---
   static Future<void> generateNextChapter(
     Novel novel,
     BuildContext context,
@@ -274,7 +283,7 @@ class AIService {
     }
   }
 
-  /// Génère un plan de 10 chapitres ("sommaire") pour le futur du roman.
+  // --- [AUCUNE MODIFICATION] ---
   static Future<String> generateFutureOutline(Novel novel) async {
     debugPrint("Génération du plan directeur futur pour le roman ${novel.title}...");
     final languagePrompts = AIPrompts.getPromptsFor(novel.language);
@@ -318,12 +327,13 @@ class AIService {
     }
   }
 
-
+  // --- [AUCUNE MODIFICATION] ---
   static Future<String> updateRoadMap(Novel novel) async {
     debugPrint("Appel à updateRoadMap (résumé du PASSÉ)...");
     return novel.roadMap ?? "Le résumé du passé sera mis à jour par le backend.";
   }
 
+  // --- [AUCUNE MODIFICATION] ---
   static Future<Map<String, String?>> getReadingAndTranslation(String word, SharedPreferences prefs) async {
      debugPrint("Appel du backend pour traduction de : $word");
 
@@ -363,6 +373,7 @@ class AIService {
      }
   }
   
+  // --- [AUCUNE MODIFICATION] ---
   static String _extractApiError(http.Response response) {
     try {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
@@ -376,11 +387,13 @@ class AIService {
     return response.reasonPhrase ?? 'Erreur inconnue';
   }
 
+  // --- [AUCUNE MODIFICATION] ---
   static String _cleanAIResponse(String rawText) {
     final regex = RegExp(r'<think>.*?</think>', dotAll: true, caseSensitive: false);
     return rawText.replaceAll(regex, '').trim();
   }
 
+  // --- [AUCUNE MODIFICATION] ---
   static Chapter extractTitleAndContent(String rawContent, int currentChapterCount, bool isFirstChapter, bool isFinalChapter, LanguagePrompts languagePrompts) {
     
     final String cleanedRawContent = _cleanAIResponse(rawContent);
@@ -451,7 +464,7 @@ class AIService {
     );
   }
 
-  // --- ⬇️ MODIFICATION DE LA CONSTRUCTION DU PROMPT ⬇️ ---
+  // --- ⬇️ MODIFICATION 2 (Correction Bug n°1 et n°2 : Segmentation du Prompt) ⬇️ ---
   static String _buildChapterPrompt({
     required Novel novel,
     required bool isFirstChapter,
@@ -464,85 +477,125 @@ class AIService {
     String? roadMap,
     String? futureOutline,
   }) {
+    // === PARTIE 1 : Instructions communes ===
+    // (Style, langue, niveau, genre, etc.)
     String commonInstructions = languagePrompts.commonInstructions
         .replaceAll('[NOVEL_LEVEL]', novel.level)
         .replaceAll('[NOVEL_GENRE]', novel.genre)
         .replaceAll('[NOVEL_SPECIFICATIONS]', novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications)
         .replaceAll('[NOVEL_LANGUAGE]', novel.language);
 
+    // === PARTIE 2 : Cas spécial du PREMIER chapitre ===
+    // Ce cas est simple car il n'y a pas de contexte passé.
     if (isFirstChapter) {
-      String prompt = languagePrompts.firstChapterIntro
+      String intro = languagePrompts.firstChapterIntro
           .replaceAll('[NOVEL_TITLE]', novel.title);
       
       final buffer = StringBuffer();
-      buffer.writeln(prompt);
-      buffer.writeln("- Titre du roman: ${novel.title}");
-      buffer.writeln("- Niveau de langue: ${novel.level}");
+      buffer.writeln("--- TÂCHE ---");
+      buffer.writeln(intro);
+      buffer.writeln("\n--- DÉTAILS DU ROMAN ---");
+      buffer.writeln("- Titre: ${novel.title}");
+      buffer.writeln("- Niveau: ${novel.level}");
       buffer.writeln("- Genre: ${novel.genre}");
       buffer.writeln("- Spécifications: ${novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications}");
 
+      // Contexte futur (le seul contexte disponible)
       if (futureOutline != null && futureOutline.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
+        buffer.writeln("\n--- CONTEXTE FUTUR (GUIDE) ---");
+        buffer.writeln(languagePrompts.futureOutlineHeader);
         buffer.writeln(futureOutline);
-        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
+        buffer.writeln(languagePrompts.futureOutlinePriorityRule); // Règle de priorité
       }
       
-      buffer.writeln("\n$commonInstructions");
+      // Règles et format
+      buffer.writeln("\n--- RÈGLES DE GÉNÉRATION ---");
+      buffer.writeln(commonInstructions);
+      buffer.writeln("\n--- FORMAT DE SORTIE ---");
       buffer.writeln(languagePrompts.outputFormatFirst);
       return buffer.toString();
-
-    } else {
-      final String intro = isFinalChapter
-          ? languagePrompts.finalChapterIntro
-          : languagePrompts.nextChapterIntro.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
-      
-      final String outputFormat = isFinalChapter
-          ? languagePrompts.outputFormatFinal
-          : languagePrompts.outputFormatNext.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
-
-      final String finalChapterInstructions = isFinalChapter ? languagePrompts.finalChapterSpecificInstructions : "";
-      
-      final buffer = StringBuffer();
-      buffer.writeln("--- CONTEXTE DE L'HISTOIRE ---");
-      
-      if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
-        final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
-        buffer.writeln("\n$header");
-        buffer.writeln(lastChapterContent);
-      } else {
-        // Si pour une raison quelconque le chapitre précédent est vide, on met un avertissement
-        buffer.writeln("\n[AVERTISSEMENT: Le contenu du chapitre précédent est manquant.]");
-      }
-
-      if (roadMap != null && roadMap.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.roadmapHeader}:");
-        buffer.writeln(roadMap);
-      }
-      
-      if (futureOutline != null && futureOutline.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
-        buffer.writeln(futureOutline);
-      }
-      
-      if (similarChapters != null && similarChapters.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.contextSimilarSectionHeader}");
-        for (int i = 0; i < similarChapters.length; i++) {
-          final excerptHeader = languagePrompts.similarExcerptHeader.replaceAll("[NUMBER]", (i + 1).toString());
-          buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
-        }
-      }
-      
-      final String contextSection = buffer.toString();
-
-      // On sépare clairement la tâche finale du contexte.
-      final String finalTaskInstruction = 
-          "--- TA TÂCHE --- \n$intro\n\n$outputFormat\n\n$commonInstructions\n\n$finalChapterInstructions";
-
-      return '''$contextSection
-
-$finalTaskInstruction
-''';
     }
-  }
-}
+    
+    // === PARTIE 3 : Cas des chapitres SUIVANTS (Chap 2+) ===
+    // C'est ici que la segmentation est cruciale.
 
+    // 1. Définition de la TÂCHE
+    final String intro = isFinalChapter
+        ? languagePrompts.finalChapterIntro
+        : languagePrompts.nextChapterIntro.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
+    
+    final String outputFormat = isFinalChapter
+        ? languagePrompts.outputFormatFinal
+        : languagePrompts.outputFormatNext.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
+
+    final String finalChapterInstructions = isFinalChapter ? languagePrompts.finalChapterSpecificInstructions : "";
+
+    final buffer = StringBuffer();
+    
+    // --- SEGMENT 1 : LA TÂCHE ---
+    buffer.writeln("--- TÂCHE ---");
+    buffer.writeln(intro);
+
+    // --- SEGMENT 2 : ANCRAGE IMMÉDIAT (PRIORITÉ ABSOLUE) ---
+    // C'est la boussole à très court terme.
+    if (lastSentence != null && lastSentence.isNotEmpty) {
+        buffer.writeln("\n--- ANCRAGE IMMÉDIAT (PRIORITÉ ABSOLUE) ---");
+        buffer.writeln(languagePrompts.contextLastSentenceHeader);
+        buffer.writeln(lastSentence);
+        buffer.writeln(languagePrompts.contextFollowInstruction); 
+    } else {
+      buffer.writeln("\n[AVERTISSEMENT: La dernière phrase du chapitre précédent est manquante. Continuez logiquement.]");
+    }
+
+    // --- SEGMENT 3 : CONTEXTE PASSÉ (MÉMOIRE) ---
+    // ✅ CORRECTION BUG n°1 : On ne fournit qu'UN SEUL type de contexte passé.
+    // Le Roadmap (résumé) est prioritaire s'il existe (Chap 4+).
+    // Sinon, on se rabat sur le chapitre précédent complet (Chap 2-3).
+    buffer.writeln("\n--- CONTEXTE PASSÉ (MÉMOIRE) ---");
+    if (roadMap != null && roadMap.isNotEmpty) {
+      buffer.writeln(languagePrompts.roadmapHeader);
+      buffer.writeln(roadMap);
+    } else if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
+      final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
+      buffer.writeln(header);
+      buffer.writeln(lastChapterContent);
+    } else {
+      buffer.writeln("[AVERTISSEMENT: Le contexte du chapitre précédent est manquant.]");
+    }
+    // --- FIN CORRECTION BUG n°1 ---
+
+    // --- SEGMENT 4 : CONTEXTE FUTUR (GUIDE) ---
+    // C'est la carte routière à long terme.
+    if (futureOutline != null && futureOutline.isNotEmpty) {
+      buffer.writeln("\n--- CONTEXTE FUTUR (GUIDE) ---");
+      buffer.writeln(languagePrompts.futureOutlineHeader);
+      buffer.writeln(futureOutline);
+      
+      // ✅ CORRECTION BUG n°2 : On ajoute la règle de priorité qui manquait ici.
+      buffer.writeln(languagePrompts.futureOutlinePriorityRule);
+      // --- FIN CORRECTION BUG n°2 ---
+    }
+    
+    // --- SEGMENT 5 : CONTEXTE PERTINENT (FAISS) ---
+    // Ce sont des "flashbacks" de chapitres pertinents.
+    if (similarChapters != null && similarChapters.isNotEmpty) {
+      buffer.writeln("\n--- CONTEXTE PERTINENT (EXTRAITS DE LA MÉMOIRE) ---");
+      buffer.writeln(languagePrompts.contextSimilarSectionHeader);
+      for (int i = 0; i < similarChapters.length; i++) {
+        final excerptHeader = languagePrompts.similarExcerptHeader.replaceAll("[NUMBER]", (i + 1).toString());
+        buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
+      }
+    }
+      
+    // --- SEGMENT 6 : RÈGLES ET FORMAT ---
+    buffer.writeln("\n--- RÈGLES DE GÉNÉRATION ---");
+    buffer.writeln(commonInstructions);
+    buffer.writeln(finalChapterInstructions);
+    
+    buffer.writeln("\n--- FORMAT DE SORTIE ---");
+    buffer.writeln(outputFormat);
+
+    return buffer.toString();
+  }
+  // --- ⬆️ FIN MODIFICATION 2 ⬆️ ---
+}

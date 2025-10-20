@@ -33,6 +33,11 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
         _checkUserStatus();
       } else {
         // Déconnexion détectée
+        
+        // ✅ CORRECTION : Invalider manuellement le cache des romans
+        // C'est la solution la plus robuste pour éviter la "fuite" de données.
+        ref.invalidate(novelsProvider);
+        
         if (mounted) {
           setState(() {
             _isApproved = false;
@@ -88,6 +93,9 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
         // Statut non 'approved', déconnexion immédiate
         await Supabase.instance.client.auth.signOut();
         
+        // ✅ CORRECTION : Invalider aussi le cache ici (cas: rejeté, en attente)
+        ref.invalidate(novelsProvider);
+        
         if (mounted) {
           String message;
           if (profileData == null) {
@@ -115,6 +123,10 @@ class _AuthGuardState extends ConsumerState<AuthGuard> {
     } catch (e) {
       debugPrint('Erreur lors de la vérification du statut: $e');
       await Supabase.instance.client.auth.signOut();
+      
+      // ✅ CORRECTION : Invalider aussi le cache en cas d'erreur
+      ref.invalidate(novelsProvider);
+      
       if (mounted) {
         setState(() { _isApproved = false; _isLoading = false; });
       }
