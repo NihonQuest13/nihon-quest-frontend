@@ -1,4 +1,4 @@
-// lib/providers.dart (CORRIGÉ - Requête unique)
+// lib/providers.dart (CORRIGÉ - Dépendance à l'Auth)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,59 +87,62 @@ final sortOptionProvider = StateProvider<SortOption>((ref) => SortOption.updated
 
 final supabaseProvider = Provider((ref) => Supabase.instance.client);
 
+// --- ✅ NOUVEAU PROVIDER POUR OBSERVER L'AUTH ---
+/// Ce provider émet un nouvel état à chaque connexion ou déconnexion.
+final authStateProvider = StreamProvider<AuthState>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  return supabase.auth.onAuthStateChange;
+});
+// --- FIN DE L'AJOUT ---
+
+
 final novelsProvider = AsyncNotifierProvider<NovelsNotifier, List<Novel>>(NovelsNotifier.new);
 
 class NovelsNotifier extends AsyncNotifier<List<Novel>> {
-  DateTime? _lastFetch;
-  static const _cacheDuration = Duration(minutes: 5);
-  String? _cachedUserId; // <-- ✅ AJOUT : Mémorise l'ID de l'utilisateur du cache
+  // ❌ La logique de cache manuelle est supprimée.
+  // ❌ _lastFetch, _cacheDuration, _cachedUserId
 
   @override
   Future<List<Novel>> build() async {
-    final supabase = ref.watch(supabaseProvider);
+    // ✅ DÉPENDANCE N°1 : L'état d'authentification
+    // Si l'auth change (login/logout), ce provider sera invalidé et `build` sera ré-exécuté.
+    ref.watch(authStateProvider);
+
+    // ✅ DÉPENDANCE N°2 : L'option de tri
+    // Si l'option de tri change, ce provider sera invalidé et `build` sera ré-exécuté.
+    final sortOption = ref.watch(sortOptionProvider);
+
+    final supabase = ref.read(supabaseProvider); // .read() est ok ici
     final userId = supabase.auth.currentUser?.id;
 
-    final now = DateTime.now();
-    
-    // --- ✅ MODIFICATION : Vérifie si le user ID du cache correspond au user ID actuel ---
-    if (_lastFetch != null &&
-        now.difference(_lastFetch!) < _cacheDuration &&
-        state.hasValue &&
-        _cachedUserId == userId) // <-- LA VÉRIFICATION CRITIQUE
-    {
-      debugPrint("[NovelsProvider] Utilisation du cache (user: $userId, ${state.value!.length} romans)");
-      return state.value!;
-    }
-    // --- FIN MODIFICATION ---
-
-    debugPrint("[NovelsProvider] Cache invalide (user: $userId). Récupération depuis Supabase...");
-
+    // Si déconnecté, retourne une liste vide.
     if (userId == null) {
-      _lastFetch = now;
-      _cachedUserId = null; // <-- ✅ Vide l'ID du cache
+      debugPrint("[NovelsProvider] Aucun utilisateur, retour d'une liste vide.");
       return [];
     }
 
+    // Si l'auth ou le tri a changé, on refait la requête.
+    debugPrint("[NovelsProvider] Récupération depuis Supabase (User: $userId, Tri: $sortOption)...");
+    
     final novelsData = await supabase
         .from('novels')
         .select('*, chapters(*)')
         .eq('user_id', userId)
         .order('updated_at', ascending: false)
-        .order('created_at', referencedTable: 'chapters', ascending: true);
+        .order('created_at', referencedTable: 'chapters', ascending: true); 
     
     final novels = novelsData.map((novelRow) {
       return Novel.fromJson(novelRow);
     }).toList();
     
-    _lastFetch = now;
-    _cachedUserId = userId; // <-- ✅ Stocke l'ID de l'utilisateur avec le cache
-    return _sortNovels(novels);
+    // Le tri est appliqué après le fetch
+    return _sortNovels(novels, sortOption);
   }
 
-  List<Novel> _sortNovels(List<Novel> novels) {
-    final sortOption = ref.read(sortOptionProvider);
-    
+  // ✅ Le `sortOption` est maintenant passé en paramètre
+  List<Novel> _sortNovels(List<Novel> novels, SortOption sortOption) {
     if (sortOption == SortOption.updatedAt) {
+      // La requête est déjà triée par updatedAt, on ne fait rien
       return novels; 
     }
     
@@ -158,7 +161,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         });
         break;
       case SortOption.updatedAt:
-        break; 
+        break; // Déjà géré
     }
     return novels;
   }
@@ -170,6 +173,10 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     return data;
   }
 
+  // --- Les méthodes add, update, delete sont maintenant plus simples ---
+  // Elles font une mise à jour optimiste, puis appellent Supabase.
+  // Si Supabase échoue, on invalide pour forcer un `build` qui récupère la vérité.
+
   Future<void> addNovel(Novel novel) async {
     final supabase = ref.read(supabaseProvider);
     final userId = supabase.auth.currentUser?.id;
@@ -178,28 +185,24 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     final novelData = _novelToSupabaseJson(novel, userId);
 
     final currentNovels = state.value ?? [];
+    // Mise à jour optimiste
     state = AsyncValue.data([novel, ...currentNovels]);
 
     try {
-      // 1. Insérer le roman
       await supabase.from('novels').insert(novelData);
       
-      // 2. Insérer les chapitres
       if (novel.chapters.isNotEmpty) {
         final chaptersData = novel.chapters.map((chapter) {
           final chapterJson = chapter.toJson();
           chapterJson['novel_id'] = novel.id;
           return chapterJson;
         }).toList();
-        
         await supabase.from('chapters').insert(chaptersData);
       }
-      
-      _lastFetch = DateTime.now(); 
-      _cachedUserId = userId; // <-- ✅ Met à jour le user du cache
+      // Pas besoin de toucher au cache, l'état est déjà à jour
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de l'ajout, rechargement...");
-      state = await AsyncValue.guard(() => build());
+      ref.invalidateSelf(); // Invalide le provider pour forcer un refetch
       rethrow;
     }
   }
@@ -213,16 +216,15 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
 
     final currentNovels = state.value ?? [];
     final updatedList = currentNovels.map((n) => n.id == novel.id ? novel : n).toList();
+    // Mise à jour optimiste
     state = AsyncValue.data(updatedList);
 
     try {
-      // 1. Mettre à jour le roman
       await supabase
         .from('novels')
         .update(novelData)
         .eq('id', novel.id);
       
-      // 2. Mettre à jour les chapitres (en supprimant et recréant)
       await supabase.from('chapters').delete().eq('novel_id', novel.id);
       
       if (novel.chapters.isNotEmpty) {
@@ -231,15 +233,11 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
           chapterJson['novel_id'] = novel.id;
           return chapterJson;
         }).toList();
-        
         await supabase.from('chapters').insert(chaptersData);
       }
-      
-      _lastFetch = DateTime.now();
-      _cachedUserId = userId; // <-- ✅ Met à jour le user du cache
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la mise à jour, rechargement...");
-      state = await AsyncValue.guard(() => build());
+      ref.invalidateSelf(); // Invalide le provider pour forcer un refetch
       rethrow;
     }
   }
@@ -252,34 +250,34 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     );
     
     novelToUpdate.addChapter(newChapter);
-    await updateNovel(novelToUpdate);
+    await updateNovel(novelToUpdate); // `updateNovel` gère déjà la BDD et l'état
   }
 
   Future<void> deleteNovel(String novelId) async {
     final supabase = ref.read(supabaseProvider);
     
     final currentNovels = state.value ?? [];
+    // Mise à jour optimiste
     state = AsyncValue.data(currentNovels.where((n) => n.id != novelId).toList());
     
     try {
       await supabase.from('novels').delete().eq('id', novelId);
-      _lastFetch = DateTime.now();
-      _cachedUserId = supabase.auth.currentUser?.id; // <-- ✅ Met à jour le user du cache
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la suppression, rechargement...");
-      state = await AsyncValue.guard(() => build());
+      ref.invalidateSelf(); // Invalide le provider pour forcer un refetch
       rethrow;
     }
   }
   
   Future<void> refresh() async {
-    _lastFetch = null; 
-    _cachedUserId = null; // <-- ✅ Vide aussi le user du cache
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => build());
+    // La fonction refresh invalide déjà le provider, 
+    // ce qui forcera `build` à se ré-exécuter.
+    // On n'a rien besoin de faire de plus.
+    ref.invalidateSelf();
   }
 }
 
+// --- Le reste du fichier est inchangé ---
 final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return VocabularyService(prefs: prefs);
