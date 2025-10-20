@@ -13,8 +13,8 @@ final Map<String, Map<String, String>> kWritersMap = {
     'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
   },
   'qwen/qwen3-235b-a22b:free': {
-    'name': 'Qwen 3.5B (Phase de test)',
-    'description': 'Vous le verez penser et raisonner, mais il est encore en phase de test.',
+    'name': 'Qwen 3.5B (Phase de test - recommandé)',
+    'description': 'Vous le verez penser et raisonner, mais il est encore en phase de test. Le meilleur choix actuellement.',
   },
   'meta-llama/llama-3.3-70b-instruct:free': {
     'name': 'Llama (Phase de test)',

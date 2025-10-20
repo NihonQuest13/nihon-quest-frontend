@@ -1,4 +1,4 @@
-// lib/create_novel_page.dart (MODIFIÉ)
+// lib/create_novel_page.dart (CORRIGÉ)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,8 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models.dart';
 import 'config.dart';
 import 'providers.dart';
-import 'services/roadmap_service.dart';
-import 'services/ai_service.dart'; // <-- IMPORT AJOUTÉ
+// import 'services/roadmap_service.dart'; // <-- 2. IMPORT INUTILISÉ SUPPRIMÉ
+import 'services/ai_service.dart';
+import 'novel_reader_page.dart'; // <-- 1. IMPORT AJOUTÉ
 
 class CreateNovelPage extends ConsumerStatefulWidget {
   const CreateNovelPage({super.key});
@@ -19,8 +20,7 @@ class CreateNovelPage extends ConsumerStatefulWidget {
 class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _specificationsController =
-      TextEditingController();
+  final TextEditingController _specificationsController = TextEditingController();
 
   bool _isLoading = false;
 
@@ -28,14 +28,14 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
   String _selectedLanguage = 'Japonais';
   late String _selectedLevel;
   String _selectedGenre = 'Fantasy';
-  String _selectedModelId = kDefaultModelId;
+  String _selectedModelId = kDefaultModelId; 
 
   final Map<String, List<String>> _languageLevels = {
     'Anglais': ['A1 (Beginner)', 'A2 (Elementary)', 'B1 (Intermediate)', 'B2 (Advanced)', 'C1 (Proficient)', 'C2 (Mastery)', 'Native'],
     'Coréen': ['TOPIK 1-2 (Débutant)', 'TOPIK 3-4 (Intermédiaire)', 'TOPIK 5-6 (Avancé)', 'Natif'],
     'Espagnol': ['A1 (Principiante)', 'A2 (Elemental)', 'B1 (Intermedio)', 'B2 (Avanzado)', 'C1 (Experto)', 'C2 (Maestría)', 'Nativo'],
     'Français': ['A1 (Débutant)', 'A2 (Élémentaire)', 'B1 (Intermédiaire)', 'B2 (Avancé)', 'C1 (Expert)', 'C2 (Maîtrise)', 'Natif'],
-    'Italien': ['A1 (Principiante)', 'A2 (Elementare)', 'B1 (Intermedio)', 'B2 (Avanzato)', 'C1 (Esperto)', 'C2 (Padronanza)', 'Nativo'],
+    'Italien': ['A1 (Principiante)', 'A2 (Elementare)', 'B1 (Intermedio)', 'B2 (Avanzado)', 'C1 (Esperto)', 'C2 (Padronanza)', 'Nativo'],
     'Japonais': ['N5', 'N4', 'N3', 'N2', 'N1', 'Natif']
   };
 
@@ -59,6 +59,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     super.dispose();
   }
 
+  // --- ⬇️ MODIFICATION DE LA LOGIQUE DE CRÉATION ET NAVIGATION ⬇️ ---
   Future<void> _createNovel() async {
     if (!(_formKey.currentState?.validate() ?? false) || _isLoading) {
       return;
@@ -81,7 +82,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
       return;
     }
 
-    // 1. On crée l'objet Novel
+    // On crée l'objet Novel initial
     final newNovel = Novel(
       user_id: userId,
       title: _titleController.text.trim(),
@@ -95,46 +96,45 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     );
 
     try {
-      // 2. On sauvegarde le roman dans Supabase (0 chapitres)
+      // Étape 1: Sauvegarder le roman initial (0 chapitres)
       await ref.read(novelsProvider.notifier).addNovel(newNovel);
-
       if (!context.mounted) return;
 
-      // 3. On génère le PLAN DIRECTEUR (futureOutline)
-      // Le service affiche sa propre SnackBar "Génération du plan..."
-      await ref
-          .read(roadmapServiceProvider)
-          .triggerFutureOutlineUpdateIfNeeded(newNovel, context);
+      // Étape 2: Générer le plan directeur.
+      // Le service met à jour le 'newNovel' en mémoire ET dans la BDD.
+      await ref.read(roadmapServiceProvider).triggerFutureOutlineUpdateIfNeeded(newNovel, context);
+      if (!context.mounted) return; 
 
+      // Étape 3: Générer le chapitre 1.
+      // Ce service ajoute le chapitre 1 au 'newNovel' en mémoire ET le sauvegarde dans la BDD.
+      await AIService.generateNextChapter(newNovel, context, ref);
       if (!context.mounted) return;
 
-      // 4. --- MODIFICATION AJOUTÉE ---
-      // On génère le CHAPITRE 1 automatiquement après le plan
-      
-      // On cache la SnackBar précédente pour en montrer une nouvelle
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Génération du chapitre 1 en cours..."),
-          backgroundColor: Colors.blueAccent,
-          duration: Duration(seconds: 4), // Durée indicative
+      // --- NOUVELLE LOGIQUE DE NAVIGATION ---
+      // Maintenant que tout est terminé, on va chercher la version finale du roman
+      // directement depuis le provider pour s'assurer qu'elle est 100% à jour.
+      final allNovels = await ref.read(novelsProvider.future);
+      final finalNovel = allNovels.firstWhere((n) => n.id == newNovel.id, orElse: () => newNovel);
+
+      if (!context.mounted) return; 
+
+      // On ferme la page de création...
+      Navigator.of(context).pop();
+      // ...et on ouvre immédiatement la page de lecture avec le roman complet.
+      // ✅ APPEL CORRIGÉ
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => NovelReaderPage(
+            novelId: finalNovel.id,
+            vocabularyService: ref.read(vocabularyServiceProvider),
+            themeService: themeService,
+          ),
         ),
       );
 
-      // On appelle le service AI pour générer le premier chapitre
-      // On passe le 'ref' pour que le service puisse mettre à jour l'état
-      await AIService.generateNextChapter(newNovel, context, ref);
-
-      // --- FIN DE LA MODIFICATION ---
-
-      if (!context.mounted) return;
-
-      // 5. On ferme la page (le roman a maintenant 1 chapitre)
-      Navigator.pop(context);
-
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar(); // Cache le "Génération en cours..."
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Erreur lors de la création : ${e.toString()}"),
@@ -148,6 +148,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
       }
     }
   }
+  // --- ⬆️ FIN DE LA MODIFICATION ⬆️ ---
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +163,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
         child: ListView(
           padding: const EdgeInsets.all(20.0),
           children: [
+            // Title
             TextFormField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -170,18 +172,18 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 hintText: 'Ex: Chroniques de l\'Aube Écarlate',
               ),
               validator: (value) =>
-                  (value == null || value.trim().isEmpty)
-                      ? 'Veuillez entrer un titre'
-                      : null,
+                  (value == null || value.trim().isEmpty) ? 'Veuillez entrer un titre' : null,
             ),
             const SizedBox(height: 20),
+
+            // Writer selection
             DropdownButtonFormField<String>(
               value: _selectedModelId,
               decoration: const InputDecoration(
                 labelText: 'Écrivain',
                 prefixIcon: Icon(Icons.edit_note_rounded),
               ),
-              items: kWritersMap.entries.map((entry) {
+              items: kWritersMap.entries.map((entry) { 
                 return DropdownMenuItem<String>(
                   value: entry.key,
                   child: Column(
@@ -190,8 +192,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                     children: [
                       Text(
                         entry.value['name']!,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
@@ -204,21 +205,20 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 );
               }).toList(),
               selectedItemBuilder: (BuildContext context) {
-                return kWritersMap.values.map<Widget>((item) {
+                return kWritersMap.values.map<Widget>((item) { 
                   return Align(
                     alignment: Alignment.centerLeft,
-                    child:
-                        Text(item['name']!, overflow: TextOverflow.ellipsis),
+                    child: Text(item['name']!, overflow: TextOverflow.ellipsis),
                   );
                 }).toList();
               },
               onChanged: (String? newValue) {
-                if (newValue != null) {
-                  setState(() => _selectedModelId = newValue);
-                }
+                if (newValue != null) setState(() => _selectedModelId = newValue);
               },
             ),
             const SizedBox(height: 20),
+
+            // Language and Level
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -226,21 +226,16 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                   flex: 2,
                   child: DropdownButtonFormField<String>(
                     value: _selectedLanguage,
-                    decoration: const InputDecoration(
-                        labelText: 'Langue',
-                        prefixIcon: Icon(Icons.language)),
+                    decoration: const InputDecoration(labelText: 'Langue', prefixIcon: Icon(Icons.language)),
                     items: _languageLevels.keys.map((String value) {
-                      return DropdownMenuItem<String>(
-                          value: value, child: Text(value));
+                      return DropdownMenuItem<String>(value: value, child: Text(value));
                     }).toList(),
                     onChanged: (String? newValue) {
                       if (newValue != null) {
                         setState(() {
                           _selectedLanguage = newValue;
                           _currentLevels = _languageLevels[newValue]!;
-                          _selectedLevel = _currentLevels.length > 2
-                              ? _currentLevels[2]
-                              : _currentLevels.first;
+                          _selectedLevel = _currentLevels.length > 2 ? _currentLevels[2] : _currentLevels.first;
                         });
                       }
                     },
@@ -251,64 +246,59 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                   flex: 3,
                   child: DropdownButtonFormField<String>(
                     value: _selectedLevel,
-                    decoration: const InputDecoration(
-                        labelText: 'Niveau',
-                        prefixIcon: Icon(Icons.leaderboard_outlined)),
+                    decoration: const InputDecoration(labelText: 'Niveau', prefixIcon: Icon(Icons.leaderboard_outlined)),
                     items: _currentLevels.map((String value) {
-                      return DropdownMenuItem<String>(
-                          value: value, child: Text(value));
+                      return DropdownMenuItem<String>(value: value, child: Text(value));
                     }).toList(),
                     onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() => _selectedLevel = newValue);
-                      }
+                      if (newValue != null) setState(() => _selectedLevel = newValue);
                     },
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 20),
+
+            // Genre
             DropdownButtonFormField<String>(
               value: _selectedGenre,
-              decoration: const InputDecoration(
-                  labelText: 'Genre',
-                  prefixIcon: Icon(Icons.category_outlined)),
+              decoration: const InputDecoration(labelText: 'Genre', prefixIcon: Icon(Icons.category_outlined)),
               items: _genres.map((String value) {
-                return DropdownMenuItem<String>(
-                    value: value, child: Text(value));
+                return DropdownMenuItem<String>(value: value, child: Text(value));
               }).toList(),
               onChanged: (String? newValue) {
                 if (newValue != null) setState(() => _selectedGenre = newValue);
               },
             ),
             const SizedBox(height: 20),
+
+            // Specifications
             TextFormField(
               controller: _specificationsController,
               decoration: const InputDecoration(
                 labelText: 'Spécifications / Thèmes',
                 prefixIcon: Icon(Icons.lightbulb_outline),
-                hintText:
-                    'Ex: lieu précis, description des personnages, éléments de l\'intrigue...',
+                hintText: 'Ex: lieu précis, description des personnages, éléments de l\'intrigue...',
               ),
               minLines: 3,
               maxLines: 5,
             ),
             const SizedBox(height: 32),
+
+            // Submit Button
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
               ),
-              icon: _isLoading
+              icon: _isLoading 
                   ? Container(
-                      width: 24,
-                      height: 24,
+                      width: 24, 
+                      height: 24, 
                       padding: const EdgeInsets.all(2.0),
-                      child: const CircularProgressIndicator(
-                          strokeWidth: 3, color: Colors.white))
+                      child: const CircularProgressIndicator(strokeWidth: 3, color: Colors.white)
+                    )
                   : const Icon(Icons.auto_awesome),
-              label: Text(_isLoading
-                  ? 'Génération en cours...'
-                  : 'Commencer l\'aventure'),
+              label: Text(_isLoading ? 'Création en cours...' : 'Commencer l\'aventure'),
               onPressed: _isLoading ? null : _createNovel,
             ),
           ],

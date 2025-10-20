@@ -1,4 +1,4 @@
-// lib/services/ai_service.dart (CORRIGÉ)
+// lib/services/ai_service.dart (CORRIGÉ ET AMÉLIORÉ)
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -204,13 +204,12 @@ class AIService {
   static Future<void> generateNextChapter(
     Novel novel,
     BuildContext context,
-    WidgetRef ref, // On a besoin du 'ref' pour mettre à jour le provider
+    WidgetRef ref,
   ) async {
     debugPrint("Demande de génération de chapitre ${novel.chapters.length + 1} for '${novel.title}'");
 
     final bool isFirstChapter = novel.chapters.isEmpty;
     
-    // 1. Préparer le prompt
     final String prompt = await preparePrompt(
       novel: novel,
       isFirstChapter: isFirstChapter,
@@ -219,7 +218,6 @@ class AIService {
 
     if (!context.mounted) return;
 
-    // 2. Préparer le stream de données depuis le backend
     final stream = streamChapterFromPrompt(
       prompt: prompt,
       modelId: novel.modelId,
@@ -229,15 +227,12 @@ class AIService {
     final StringBuffer contentBuffer = StringBuffer();
     
     try {
-      // 3. Écouter le stream et assembler le texte complet du chapitre
       await for (final chunk in stream) {
         contentBuffer.write(chunk);
       }
 
-      // 4. Vérifier si le widget est toujours monté
       if (!context.mounted) return;
 
-      // 5. Le stream est terminé, on extrait le titre et le contenu propre
       final LanguagePrompts prompts = AIPrompts.getPromptsFor(novel.language);
       final Chapter newChapter = extractTitleAndContent(
         contentBuffer.toString(),
@@ -247,11 +242,9 @@ class AIService {
         prompts,
       );
 
-      // 6. Ajouter le nouveau chapitre au roman
       novel.chapters.add(newChapter);
       novel.updatedAt = DateTime.now();
       
-      // 7. Sauvegarder le roman mis à jour via le provider
       await ref.read(novelsProvider.notifier).updateNovel(novel);
       
       if (context.mounted) {
@@ -458,6 +451,7 @@ class AIService {
     );
   }
 
+  // --- ⬇️ MODIFICATION DE LA CONSTRUCTION DU PROMPT ⬇️ ---
   static String _buildChapterPrompt({
     required Novel novel,
     required bool isFirstChapter,
@@ -509,17 +503,25 @@ class AIService {
       final String finalChapterInstructions = isFinalChapter ? languagePrompts.finalChapterSpecificInstructions : "";
       
       final buffer = StringBuffer();
-      buffer.writeln(languagePrompts.contextSectionHeader);
+      buffer.writeln("--- CONTEXTE DE L'HISTOIRE ---");
       
-      if(lastSentence != null && lastSentence.isNotEmpty) {
-          buffer.writeln("\n${languagePrompts.contextLastSentenceHeader}");
-          buffer.writeln('"$lastSentence"');
-      }
-
       if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
         final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
         buffer.writeln("\n$header");
         buffer.writeln(lastChapterContent);
+      } else {
+        // Si pour une raison quelconque le chapitre précédent est vide, on met un avertissement
+        buffer.writeln("\n[AVERTISSEMENT: Le contenu du chapitre précédent est manquant.]");
+      }
+
+      if (roadMap != null && roadMap.isNotEmpty) {
+        buffer.writeln("\n${languagePrompts.roadmapHeader}:");
+        buffer.writeln(roadMap);
+      }
+      
+      if (futureOutline != null && futureOutline.isNotEmpty) {
+        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
+        buffer.writeln(futureOutline);
       }
       
       if (similarChapters != null && similarChapters.isNotEmpty) {
@@ -529,41 +531,17 @@ class AIService {
           buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
         }
       }
-
-      if (futureOutline != null && futureOutline.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
-        buffer.writeln(futureOutline);
-        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
-      }
       
-      if (roadMap != null && roadMap.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.roadmapHeader}:");
-        buffer.writeln(roadMap);
-      }
-      
-      buffer.writeln(languagePrompts.contextFollowInstruction);
       final String contextSection = buffer.toString();
 
-      // --- ⬇️ MODIFICATION PRINCIPALE ⬇️ ---
       // On sépare clairement la tâche finale du contexte.
       final String finalTaskInstruction = 
-          "TA TÂCHE FINALE EST LA SUIVANTE :\n$intro\n$outputFormat";
+          "--- TA TÂCHE --- \n$intro\n\n$outputFormat\n\n$commonInstructions\n\n$finalChapterInstructions";
 
-      // On enlève la ligne qui causait l'erreur
-      return '''- Niveau de langue: ${novel.level}
-- Genre: ${novel.genre}
-- Titre du roman: ${novel.title}
+      return '''$contextSection
 
-$contextSection
-
-$commonInstructions
-
-$finalChapterInstructions
-
----
 $finalTaskInstruction
 ''';
-      // --- ⬆️ FIN DE LA MODIFICATION ⬆️ ---
     }
   }
 }
