@@ -232,7 +232,8 @@ class AIService {
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode({
           'prompt': prompt,
-          'model_id': _defaultPlannerModel, // Utilise le modèle de planification (maintenant kDefaultModelId)
+          // ✅ MODIFICATION : Utilise le modèle du roman, sinon le modèle de plan par défaut
+          'model_id': novel.modelId ?? _defaultPlannerModel,
           'language': novel.language,
         }),
       ).timeout(const Duration(seconds: 120)); // 2 minutes de timeout
