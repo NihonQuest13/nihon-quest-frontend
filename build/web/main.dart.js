@@ -27632,7 +27632,7 @@ A.u4()
 new v.G.AbortController()
 d=t.N
 s=7
-return A.m(e.i6("POST",A.cx("https://nihon-quest-api.onrender.com/generate_completion",0,null),A.a2(["Content-Type","application/json; charset=utf-8"],d,d),B.S.ld(A.a2(["prompt",n,"model_id","deepseek/deepseek-r1-0528:free","language",g],d,d),null),null).u4(B.Ql),$async$a2B)
+return A.m(e.i6("POST",A.cx("https://nihon-quest-api.onrender.com/generate_completion",0,null),A.a2(["Content-Type","application/json; charset=utf-8"],d,d),B.S.ld(A.a2(["prompt",n,"model_id","deepseek/deepseek-chat-v3-0324:free","language",g],d,d),null),null).u4(B.Ql),$async$a2B)
 case 7:m=a2
 if(m.b===200){l=B.S.hy(B.W.bN(m.w),null)
 c=A.c6(J.bU(l,"content"))
@@ -94725,7 +94725,7 @@ $0(){var s=0,r=A.t(t.P),q=1,p=[],o=this,n,m,l,k,j,i,h,g,f,e,d
 var $async$$0=A.o(function(a,b){if(a===1){p.push(b)
 s=q}while(true)switch(s){case 0:q=3
 i=o.a
-n=i==null?"deepseek/deepseek-r1-0528:free":i
+n=i==null?"deepseek/deepseek-chat-v3-0324:free":i
 A.u4()
 new v.G.AbortController()
 m=A.aN0("POST",A.cx("https://nihon-quest-api.onrender.com/generate_chapter_stream",0,null))

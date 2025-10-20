@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import 'local_context_service.dart';
 import 'ai_prompts.dart';
+import '../config.dart'; // ✅ AJOUT : Import pour kDefaultModelId
 
 Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
   final novel = Novel.fromJson(jsonDecode(data['novel_json']));
@@ -103,9 +104,11 @@ class AIService {
   // Les clés API sont maintenant sécurisées sur le backend.
   static String get _backendUrl => LocalContextService().baseUrl;
   
-  static const String _defaultChapterModel = 'deepseek/deepseek-r1-0528:free';
+  // ✅ CORRECTION : Utilise la constante centrale
+  static const String _defaultChapterModel = kDefaultModelId;
   // --- MODIFICATION : Ajout d'un modèle pour les tâches de planification ---
-  static const String _defaultPlannerModel = 'deepseek/deepseek-r1-0528:free'; // Ou un modèle plus puissant si besoin
+  // ✅ CORRECTION : Utilise la constante centrale pour la planification aussi
+  static const String _defaultPlannerModel = kDefaultModelId;
   // --- FIN MODIFICATION ---
 
   static final http.Client _client = http.Client();
@@ -229,7 +232,7 @@ class AIService {
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode({
           'prompt': prompt,
-          'model_id': _defaultPlannerModel, // Utilise le modèle de planification
+          'model_id': _defaultPlannerModel, // Utilise le modèle de planification (maintenant kDefaultModelId)
           'language': novel.language,
         }),
       ).timeout(const Duration(seconds: 120)); // 2 minutes de timeout
@@ -454,13 +457,13 @@ class AIService {
       final buffer = StringBuffer();
       buffer.writeln(languagePrompts.contextSectionHeader);
       
-      // 1. La dernière phrase (le point de départ le plus critique)
+      // 1. ✅ CORRECTION : La dernière phrase (le point de départ le plus critique)
       if(lastSentence != null && lastSentence.isNotEmpty) {
           buffer.writeln("\n${languagePrompts.contextLastSentenceHeader}");
           buffer.writeln('"$lastSentence"');
       }
 
-      // 2. Le contexte IMMÉDIAT (le chapitre précédent)
+      // 2. ✅ CORRECTION : Le contexte IMMÉDIAT (le chapitre précédent)
       if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
         final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
         buffer.writeln("\n$header");
@@ -476,14 +479,14 @@ class AIService {
         }
       }
 
-      // 4. Le plan du FUTUR (Le fil conducteur pour les 10 prochains chapitres)
+      // 4. Le plan du FUTUR
       if (futureOutline != null && futureOutline.isNotEmpty) {
         buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
         buffer.writeln(futureOutline);
         buffer.writeln(languagePrompts.futureOutlinePriorityRule);
       }
       
-      // 5. Le résumé du PASSÉ (Le contexte général de toute l'histoire)
+      // 5. Le résumé du PASSÉ (le moins prioritaire pour la continuité immédiate)
       if (roadMap != null && roadMap.isNotEmpty) {
         buffer.writeln("\n${languagePrompts.roadmapHeader}:");
         buffer.writeln(roadMap);
