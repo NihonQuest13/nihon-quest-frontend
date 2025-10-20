@@ -1,7 +1,7 @@
 [build]
 command = "echo 'Using pre-built files from build/web'"
 # Le dossier de sortie pointe maintenant vers 'web'
-output = "web" 
+output = "build/web" 
 
 [build.environment]
 NODE_VERSION = "18"
