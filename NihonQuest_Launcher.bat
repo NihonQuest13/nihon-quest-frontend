@@ -5,11 +5,14 @@ color 0B
 title NihonQuest - Dev Launcher
 
 REM ========================================
-REM Vérification des dossiers au démarrage
+REM Configuration
 REM ========================================
 set "FRONTEND=%USERPROFILE%\nihon_quest"
 set "BACKEND=%USERPROFILE%\nihon_quest_backend"
 
+REM ========================================
+REM Vérification des dossiers au démarrage
+REM ========================================
 if not exist "!FRONTEND!" (
     cls
     echo.
@@ -50,7 +53,7 @@ echo ╚════════════════════════
 echo.
 echo  1. 🎨 Travailler sur le FRONTEND
 echo  2. ⚙️  Travailler sur le BACKEND
-echo  3. 🚀 Deploy FRONTEND (push auto-build)
+echo  3. 🚀 Deploy FRONTEND (pre-built)
 echo  4. 🚀 Deploy BACKEND (push)
 echo  5. 📊 Status des projets
 echo  6. 🌐 Ouvrir les URLs
@@ -189,19 +192,58 @@ if "!be_choice!"=="3" goto menu
 goto backend
 
 REM ========================================
-REM DEPLOY FRONTEND
+REM DEPLOY FRONTEND (PRE-BUILT)
 REM ========================================
 :deploy_frontend
 cls
 echo.
 echo ╔════════════════════════════════════════╗
-echo ║   🚀 Deploy FRONTEND                   ║
+echo ║   🚀 Deploy FRONTEND (Pre-built)       ║
 echo ╚════════════════════════════════════════╝
 echo.
 cd /d "!FRONTEND!"
 
-echo 📂 Fichiers modifiés:
-git status -s
+REM ═══ ÉTAPE 1 : Vérifier build/web ═══
+echo 🔍 Vérification de build/web...
+if not exist "build\web\index.html" (
+    echo.
+    echo ⚠️  Le dossier build/web n'existe pas ou est incomplet !
+    echo.
+    echo 🔨 Compilation Flutter en cours...
+    echo.
+    call flutter clean
+    call flutter pub get
+    call flutter build web --release
+    
+    if errorlevel 1 (
+        echo.
+        echo ❌ Erreur lors de la compilation Flutter !
+        pause
+        goto menu
+    )
+    
+    echo.
+    echo ✅ Compilation terminée !
+) else (
+    echo ✅ build/web trouvé !
+)
+
+echo.
+echo ═══════════════════════════════════════
+
+REM ═══ ÉTAPE 2 : Afficher les changements ═══
+echo.
+echo 📂 Fichiers modifiés (hors build/web):
+git status -s | findstr /V "build/web"
+
+echo.
+echo 📦 État de build/web:
+git status -s | findstr "build/web" || echo    (Aucun changement dans build/web)
+
+echo.
+echo ═══════════════════════════════════════
+
+REM ═══ ÉTAPE 3 : Message de commit ═══
 echo.
 set /p "msg=Message de commit: "
 if "!msg!"=="" (
@@ -210,10 +252,23 @@ if "!msg!"=="" (
     goto menu
 )
 
+REM ═══ ÉTAPE 4 : Git add et commit ═══
 echo.
-echo 📤 Commit et push du code source...
+echo 📤 Ajout des fichiers...
 git add .
+
+echo 💾 Commit...
 git commit -m "!msg!"
+
+if errorlevel 1 (
+    echo.
+    echo ⚠️  Rien à commiter ou erreur de commit
+    pause
+    goto menu
+)
+
+REM ═══ ÉTAPE 5 : Push ═══
+echo 🚀 Push vers GitHub...
 git push origin main
 
 if errorlevel 1 (
@@ -223,21 +278,24 @@ if errorlevel 1 (
     goto menu
 )
 
+REM ═══ ÉTAPE 6 : Résumé ═══
 echo.
 echo ═══════════════════════════════════════
-echo ✅ Code source pushed!
+echo ✅ Déploiement réussi !
 echo ═══════════════════════════════════════
 echo.
-echo 🔨 Cloudflare Pages va maintenant:
+echo 📦 Code source + build/web pushed vers GitHub
+echo.
+echo 🌐 Cloudflare Pages va maintenant:
 echo    1. Détecter le push automatiquement
-echo    2. Cloner le repository
-echo    3. Exécuter build.sh (installer Flutter + compiler)
+echo    2. Cloner le repository (avec build/web)
+echo    3. Copier build/web tel quel (sans compilation)
 echo    4. Déployer le site
 echo.
 echo 🌐 URL: https://nihonquest.pages.dev
-echo ⏱️  Temps estimé: 3-5 minutes
+echo ⏱️  Temps estimé: 30-60 secondes (au lieu de 3-5 minutes)
 echo.
-echo 💡 Astuce: Ouvrez le dashboard Cloudflare pour suivre le build
+echo 💡 Astuce: Ouvrez le dashboard Cloudflare pour suivre le déploiement
 echo    (Menu option 6 puis sélectionnez Cloudflare)
 echo.
 pause
@@ -305,6 +363,13 @@ echo.
 echo ═══ FRONTEND ═══
 cd /d "!FRONTEND!"
 git status -s
+echo.
+echo Build web status:
+if exist "build\web\index.html" (
+    echo ✅ build/web existe et semble complet
+) else (
+    echo ❌ build/web manquant ou incomplet
+)
 echo.
 echo ═══ BACKEND ═══
 cd /d "!BACKEND!"
