@@ -3,7 +3,7 @@
 import 'package:flutter/foundation.dart';
 
 /// L'ID du modèle d'IA par défaut utilisé pour la génération de chapitres.
-const String kDefaultModelId = 'deepseek/deepseek-chat-v3-0324:free';
+const String kDefaultModelId = 'z-ai/glm-4.5-air:free';
 
 /// La liste centralisée des "écrivains" (modèles IA) disponibles pour la sélection.
 /// Modifiez cette map pour ajouter ou changer les modèles dans toute l'application.
