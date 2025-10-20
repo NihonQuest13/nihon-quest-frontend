@@ -1,13 +1,8 @@
 [build]
 command = "if [ ! -d $HOME/flutter ]; then git clone https://github.com/flutter/flutter.git -b stable --depth 1 $HOME/flutter; fi && export PATH=$PATH:$HOME/flutter/bin && flutter config --no-analytics && flutter pub get && flutter build web --release"
 output = "build/web"
-# ✅ AJOUT CRITIQUE : Désactive l'installation automatique des dépendances Node.js (npm clean-install)
-install_command = "" 
+install_command = "echo 'Skipping unnecessary npm install' && exit 0" # ✅ NOUVELLE COMMANDE AGRESSIVE
 
 [build.environment]
 NODE_VERSION = "18"
-
-[[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+# ...
