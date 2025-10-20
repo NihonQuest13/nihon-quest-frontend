@@ -50,7 +50,7 @@ echo ╚════════════════════════
 echo.
 echo  1. 🎨 Travailler sur le FRONTEND
 echo  2. ⚙️  Travailler sur le BACKEND
-echo  3. 🚀 Deploy FRONTEND (build + push)
+echo  3. 🚀 Deploy FRONTEND (push auto-build)
 echo  4. 🚀 Deploy BACKEND (push)
 echo  5. 📊 Status des projets
 echo  6. 🌐 Ouvrir les URLs
@@ -83,7 +83,7 @@ echo ║   🎨 FRONTEND                          ║
 echo ╚════════════════════════════════════════╝
 echo.
 echo  1. Lancer Flutter (chrome)
-echo  2. Build web
+echo  2. Build web (local test)
 echo  3. Commit et push
 echo  4. Retour
 echo.
@@ -101,11 +101,14 @@ if "!fe_choice!"=="1" (
 
 if "!fe_choice!"=="2" (
     echo.
-    echo 🔨 Build en cours...
+    echo 🔨 Build local en cours...
+    echo (Ce build est pour tester localement uniquement)
+    echo.
     cd /d "!FRONTEND!"
     flutter build web --release
     echo.
     echo ✅ Build terminé!
+    echo 📂 Fichiers dans: build\web
     echo.
     pause
     goto frontend
@@ -197,34 +200,7 @@ echo ╚════════════════════════
 echo.
 cd /d "!FRONTEND!"
 
-echo 🔨 Build en cours...
-echo.
-call flutter build web --release
-if errorlevel 1 (
-    echo.
-    echo ❌ Build échoué!
-    echo.
-    pause
-    goto menu
-)
-
-echo.
-echo ✅ Build réussi!
-echo.
-echo 📂 Configuration pour Cloudflare...
-
-REM Vérifier et configurer .gitignore
-findstr /C:"!/build/web/" .gitignore >nul 2>&1
-if errorlevel 1 (
-    echo 🔧 Ajout exception dans .gitignore...
-    echo. >> .gitignore
-    echo # Cloudflare Pages >> .gitignore
-    echo !/build/web/ >> .gitignore
-    echo !/build/web/** >> .gitignore
-)
-
-echo.
-echo 📂 Fichiers à déployer:
+echo 📂 Fichiers modifiés:
 git status -s
 echo.
 set /p "msg=Message de commit: "
@@ -235,15 +211,11 @@ if "!msg!"=="" (
 )
 
 echo.
-echo 📤 Ajout des fichiers...
-git add -A
-git add -f build/web
-
-echo 💾 Commit...
+echo 📤 Commit et push du code source...
+git add .
 git commit -m "!msg!"
-
-echo 🚀 Push...
 git push origin main
+
 if errorlevel 1 (
     echo.
     echo ❌ Push échoué!
@@ -253,11 +225,20 @@ if errorlevel 1 (
 
 echo.
 echo ═══════════════════════════════════════
-echo ✅ Déployé!
+echo ✅ Code source pushed!
 echo ═══════════════════════════════════════
 echo.
-echo 🌐 https://nihonquest.pages.dev
-echo ⏱️  Disponible dans 30-60 secondes
+echo 🔨 Cloudflare Pages va maintenant:
+echo    1. Détecter le push automatiquement
+echo    2. Cloner le repository
+echo    3. Exécuter build.sh (installer Flutter + compiler)
+echo    4. Déployer le site
+echo.
+echo 🌐 URL: https://nihonquest.pages.dev
+echo ⏱️  Temps estimé: 3-5 minutes
+echo.
+echo 💡 Astuce: Ouvrez le dashboard Cloudflare pour suivre le build
+echo    (Menu option 6 puis sélectionnez Cloudflare)
 echo.
 pause
 goto menu
