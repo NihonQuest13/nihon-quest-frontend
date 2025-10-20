@@ -130,6 +130,46 @@ class Novel {
        summaries = summaries ?? [],
        updatedAt = updatedAt ?? createdAt;
 
+  // ⬇️⬇️ MÉTHODE copyWith AJOUTÉE ICI ⬇️⬇️
+  Novel copyWith({
+    String? id,
+    String? user_id,
+    String? title,
+    String? level,
+    String? genre,
+    String? specifications,
+    List<Chapter>? chapters,
+    List<ChapterSummary>? summaries,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? language,
+    String? coverImagePath,
+    String? roadMap,
+    String? previousRoadMap,
+    String? modelId,
+    String? futureOutline,
+  }) {
+    return Novel(
+      id: id ?? this.id,
+      user_id: user_id ?? this.user_id,
+      title: title ?? this.title,
+      level: level ?? this.level,
+      genre: genre ?? this.genre,
+      specifications: specifications ?? this.specifications,
+      chapters: chapters ?? this.chapters,
+      summaries: summaries ?? this.summaries,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      language: language ?? this.language,
+      coverImagePath: coverImagePath ?? this.coverImagePath,
+      roadMap: roadMap ?? this.roadMap,
+      previousRoadMap: previousRoadMap ?? this.previousRoadMap,
+      modelId: modelId ?? this.modelId,
+      futureOutline: futureOutline ?? this.futureOutline,
+    );
+  }
+  // ⬆️⬆️ FIN DE L'AJOUT ⬆️⬆️
+
   void addChapter(Chapter chapter) {
     chapters.add(chapter);
     updatedAt = DateTime.now();

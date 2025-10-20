@@ -1,4 +1,4 @@
-// lib/novel_reader_page.dart (MODIFIÉ)
+// lib/novel_reader_page.dart (CORRIGÉ)
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
@@ -8,18 +8,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:collection/collection.dart';
+import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ Cet import fonctionnera après le 'pub get'
+import 'package:url_launcher/url_launcher.dart'; // ✅ Cet import fonctionnera après le 'pub get'
 
-import 'main.dart';
+// ⛔️ import 'main.dart'; // Import inutilisé supprimé
 import 'models.dart';
 import 'providers.dart';
 import 'services/ai_service.dart';
 import 'services/ai_prompts.dart';
 import 'services/vocabulary_service.dart';
 import 'services/sync_service.dart';
-import 'services/roadmap_service.dart';
+// ⛔️ import 'services/roadmap_service.dart'; // Import inutilisé supprimé (le provider suffit)
 import 'widgets/streaming_text_widget.dart';
 
-// enum ReadingDirection { horizontal, vertical } // SUPPRIMÉ
+// ⛔️ Imports inutilisés supprimés
+// import 'utils/error_handler.dart';
+// import 'edit_novel_page.dart';
+// import 'vocabulary_list_page.dart';
+
 
 class NovelReaderPage extends ConsumerStatefulWidget {
   final String novelId;
@@ -38,7 +44,6 @@ class NovelReaderPage extends ConsumerStatefulWidget {
 }
 
 class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
-  // ... (Toutes les variables d'état restent les mêmes)
   late PageController _pageController;
   int _currentPage = 0;
   final Map<int, ScrollController> _scrollControllers = {};
@@ -46,14 +51,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   bool _isGeneratingNextChapter = false;
   String _selectedWord = '';
   bool _isLoadingTranslation = false;
-  Map<String, String?>? _translationResult; // Garde les résultats ou les erreurs
+  Map<String, String?>? _translationResult;
   Timer? _selectionTimer;
   late SharedPreferences _prefs;
   bool _prefsLoaded = false;
   static const String _prefFontSizeKey = 'reader_font_size_pref';
-  // static const String _prefReadingDirectionKey = 'reader_direction_pref_'; // SUPPRIMÉ
   double _currentFontSize = 19.0;
-  // ReadingDirection _readingDirection = ReadingDirection.horizontal; // SUPPRIMÉ
   bool _isEditing = false;
   int? _editingChapterIndex;
   late TextEditingController _editingTitleController;
@@ -66,7 +69,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   @override
   void initState() {
     super.initState();
-    // ... (initState identique)
     _pageController = PageController(initialPage: 0);
     _pageController.addListener(_onPageChanged);
     _editingTitleController = TextEditingController();
@@ -77,7 +79,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
   @override
   void dispose() {
-    // ... (dispose identique)
     _selectionTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _editingTitleController.dispose();
@@ -98,50 +99,42 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     super.dispose();
   }
 
-  // --- AMÉLIORATION DE LA GESTION DE LA TRADUCTION (Conservée) ---
   Future<void> _triggerReadingAndTranslation(String word) async {
     if (_isGeneratingNextChapter || !_prefsLoaded) return;
     final trimmedWord = word.trim().replaceAll(RegExp(r'[.,!?"、。」？！]'), '');
     if (trimmedWord.isEmpty || trimmedWord.length > 50) return;
-    // On vérifie si on demande le même mot et si on n'est pas déjà en train de charger
     if (_selectedWord == trimmedWord && _isLoadingTranslation) return;
 
     if (mounted) {
-      // On réinitialise l'état avant chaque nouvelle requête
       setState(() {
         _selectedWord = trimmedWord;
         _isLoadingTranslation = true;
-        _translationResult = null; // Important de réinitialiser le résultat
+        _translationResult = null;
       });
     }
     HapticFeedback.lightImpact();
 
-    // Ajout d'un délai avant d'appeler l'API pour éviter les appels trop rapides
     await Future.delayed(const Duration(milliseconds: 300));
-    // Vérifie si le mot sélectionné n'a pas changé pendant le délai
     if (!mounted || _selectedWord != trimmedWord) return;
 
     debugPrint("Demande de traduction pour : '$trimmedWord'");
     try {
-      // On appelle le service (qui appelle le backend)
       final Map<String, String?> result = await AIService.getReadingAndTranslation(trimmedWord, _prefs);
       debugPrint("Résultat traduction reçu: $result");
 
-      // On vérifie si le mot sélectionné est toujours le même après l'appel API
       if (mounted && _selectedWord == trimmedWord) {
         setState(() {
-          _translationResult = result; // Stocke le résultat (ou les erreurs)
+          _translationResult = result;
           _isLoadingTranslation = false;
         });
 
-        // Logique d'ajout au vocabulaire (inchangée)
         final String? reading = result['reading'];
         final String? translation = result['translation'];
         final novel = await _getNovelFromProvider();
         if (novel?.language == 'Japonais' &&
             reading != null && reading.isNotEmpty &&
             translation != null && translation.isNotEmpty &&
-            result['readingError'] == null && // On vérifie qu'il n'y a pas eu d'erreur
+            result['readingError'] == null &&
             result['translationError'] == null)
         {
           final newEntry = VocabularyEntry(word: trimmedWord, reading: reading, translation: translation, createdAt: DateTime.now());
@@ -151,40 +144,35 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         }
       }
     } catch (e) {
-      // Gère les erreurs de communication avec le backend (timeout, etc.)
       debugPrint("Erreur catchée dans _triggerReadingAndTranslation (communication backend): $e");
       if (mounted && _selectedWord == trimmedWord) {
         setState(() {
           _translationResult = {
             'readingError': 'Erreur serveur',
-            'translationError': e.toString() // Affiche l'erreur de communication
+            'translationError': e.toString()
           };
           _isLoadingTranslation = false;
         });
       }
     }
   }
-  // --- FIN DE LA GESTION DE TRADUCTION ---
 
-
-  // ... (Tout le reste du fichier NovelReaderPageState reste identique)
-  // _onPageChanged, _attachScrollListenerToCurrentPage, _updateScrollProgress,
   void _onPageChanged() {
       if (!_pageController.hasClients || _pageController.page == null) return;
       final newPage = _pageController.page!.round();
       if (newPage != _currentPage) {
-          _saveCurrentScrollPosition();
-          if (mounted) {
-              setState(() {
-                  _currentPage = newPage;
-                  _selectedWord = '';
-                  _isLoadingTranslation = false;
-                  _translationResult = null;
-                  _selectionTimer?.cancel();
-              });
-          }
-          _saveLastViewedPage(newPage);
-          _attachScrollListenerToCurrentPage();
+        _saveCurrentScrollPosition();
+        if (mounted) {
+            setState(() {
+              _currentPage = newPage;
+              _selectedWord = '';
+              _isLoadingTranslation = false;
+              _translationResult = null;
+              _selectionTimer?.cancel();
+            });
+        }
+        _saveLastViewedPage(newPage);
+        _attachScrollListenerToCurrentPage();
       }
   }
 
@@ -218,13 +206,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     final novel = await _getNovelFromProvider();
     if (novel == null || !mounted) return;
-
-    /* LOGIQUE DE DIRECTION SUPPRIMÉE
-    if (novel.language == 'Japonais') {
-      final directionIndex = _prefs.getInt('$_prefReadingDirectionKey${widget.novelId}') ?? 0;
-      _readingDirection = ReadingDirection.values[directionIndex];
-    }
-    */
 
     int lastViewedPage = _prefs.getInt('last_page_${widget.novelId}') ?? 0;
     int initialPage = 0;
@@ -296,22 +277,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     if (!_prefsLoaded) return;
     await _prefs.setDouble(_prefFontSizeKey, size);
   }
-
-  /* FONCTIONS DE DIRECTION SUPPRIMÉES
-  Future<void> _saveReadingDirection(ReadingDirection direction) async {
-    if (!_prefsLoaded) return;
-    await _prefs.setInt('$_prefReadingDirectionKey${widget.novelId}', direction.index);
-  }
-
-  void _toggleReadingDirection() {
-    setState(() {
-      _readingDirection = _readingDirection == ReadingDirection.horizontal
-          ? ReadingDirection.vertical
-          : ReadingDirection.horizontal;
-    });
-    _saveReadingDirection(_readingDirection);
-  }
-  */
 
   Color _getCurrentBackgroundColor() => Theme.of(context).scaffoldBackgroundColor;
   Color _getCurrentTextColor() => Theme.of(context).colorScheme.onSurface;
@@ -451,9 +416,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
   Future<void> _finalizeChapterGeneration(Novel novel, String fullText) async {
-  if (fullText.trim().isEmpty) {
+    if (fullText.trim().isEmpty) {
       debugPrint("Erreur: L'IA a renvoyé un stream vide (probable surcharge du modèle).");
-      // On simule une erreur de serveur
       _handleGenerationError(ApiServerException("L'écrivain a renvoyé un chapitre vide. Réessayez.", statusCode: null));
       return;
     }
@@ -476,6 +440,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     await novelsNotifier.updateNovel(novel);
 
+    if (!mounted) return;
     await roadmapService.triggerRoadmapUpdateIfNeeded(novel, context);
 
     final syncTask = SyncTask(
@@ -487,6 +452,14 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     await syncService.addTask(syncTask);
 
     _showSnackbarMessage('Chapitre "${newChapter.title}" ajouté.', Colors.green, durationSeconds: 5);
+
+    // --- ✅ AUTOMATISATION PLAN DIRECTEUR (Régénération) ---
+    final chapterCount = novel.chapters.length;
+    if (chapterCount >= 10 && chapterCount % 10 == 0) {
+      debugPrint("Seuil de $chapterCount chapitres atteint. Régénération du plan directeur...");
+      _regenerateFutureOutline(novel); // Appel non bloquant
+    }
+    // --- FIN AUTOMATISATION ---
 
     setState(() {
       _isGeneratingNextChapter = false;
@@ -676,6 +649,134 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     _saveFontSizePreference(_currentFontSize);
   }
 
+  // --- ✅ NOUVELLE FONCTION : Dialogue du Plan Directeur ---
+  void _showFutureOutlineDialog(Novel novel) async {
+    Novel currentNovel = novel;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            bool isGeneratingOutline = false;
+
+            Future<void> generateOutline() async {
+              setDialogState(() => isGeneratingOutline = true);
+              try {
+                final latestNovelState = ref.read(novelsProvider).value?.firstWhereOrNull((n) => n.id == novel.id) ?? currentNovel;
+                final String newOutline = await AIService.generateFutureOutline(latestNovelState);
+
+                if (!mounted) return;
+
+                final updatedNovel = latestNovelState.copyWith(
+                  futureOutline: newOutline,
+                  updatedAt: DateTime.now()
+                );
+                await ref.read(novelsProvider.notifier).updateNovel(updatedNovel);
+
+                if (!mounted) return;
+                setDialogState(() {
+                  currentNovel = updatedNovel;
+                  isGeneratingOutline = false;
+                });
+
+                // --- ✅ AUTOMATISATION CHAPITRE 1 ---
+                if (updatedNovel.chapters.isEmpty) {
+                  debugPrint("Plan généré, lancement auto du chapitre 1...");
+                  Navigator.of(context).pop();
+                  await Future.delayed(const Duration(milliseconds: 100));
+                  if (mounted) {
+                    _guardedGenerateChapter(updatedNovel);
+                  }
+                }
+                // --- FIN AUTOMATISATION CHAPITRE 1 ---
+
+              } catch (e) {
+                 if (!mounted) return;
+                 setDialogState(() => isGeneratingOutline = false);
+                 final errorMessage = (e is ApiException) ? e.message : e.toString();
+                 if (mounted) _showSnackbarMessage("Erreur génération plan: $errorMessage", Colors.red);
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('🧭 Plan Directeur (Futur)'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isGeneratingOutline)
+                      const Center(child: CircularProgressIndicator())
+                    else if ((currentNovel.futureOutline ?? "").isEmpty)
+                      const Text("Aucun plan directeur n'a encore été généré pour ce roman.")
+                    else
+                      MarkdownBody( // ✅ Cet appel fonctionnera après le 'pub get'
+                        data: currentNovel.futureOutline!,
+                        selectable: true,
+                        onTapLink: (text, href, title) {
+                            if (href != null) launchUrl(Uri.parse(href));
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                if (isGeneratingOutline)
+                  const TextButton(onPressed: null, child: Text('Génération en cours...'))
+                else
+                  TextButton(
+                    onPressed: generateOutline,
+                    child: Text((currentNovel.futureOutline ?? "").isEmpty
+                        ? 'Générer le plan'
+                        : 'Régénérer le plan'),
+                  ),
+                TextButton(
+                  child: const Text('Fermer'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  // --- FIN NOUVELLE FONCTION ---
+
+  // --- ✅ NOUVELLE FONCTION : Régénération du Plan en arrière-plan ---
+  Future<void> _regenerateFutureOutline(Novel novel) async {
+    if (!mounted) return;
+
+    _showSnackbarMessage("🚀 Mise à jour du plan directeur en arrière-plan...", Colors.blueGrey);
+
+    try {
+      final String newOutline = await AIService.generateFutureOutline(novel);
+      if (!mounted) return;
+
+      final updatedNovel = novel.copyWith(
+        futureOutline: newOutline,
+        updatedAt: DateTime.now(),
+      );
+
+      await ref.read(novelsProvider.notifier).updateNovel(updatedNovel);
+
+      if (mounted) {
+        debugPrint("Plan directeur régénéré et sauvegardé avec succès.");
+        _showSnackbarMessage("✅ Plan directeur mis à jour !", Colors.green);
+      }
+    } catch (e) {
+      debugPrint("Erreur lors de la régénération auto du plan: $e");
+      if (mounted) {
+        final errorMessage = (e is ApiException) ? e.message : e.toString();
+        _showSnackbarMessage("⚠️ Erreur mise à jour plan: $errorMessage", Colors.orange);
+      }
+    }
+  }
+  // --- FIN NOUVELLE FONCTION ---
+
+
   void _showNovelInfoSheet(Novel novel) {
     showDialog(
       context: context,
@@ -706,8 +807,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                             children: [
                               SelectableText(
                                 novel.specifications.isNotEmpty
-                                  ? novel.specifications
-                                  : 'Aucune spécification particulière.',
+                                    ? novel.specifications
+                                    : 'Aucune spécification particulière.',
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
                                 textAlign: TextAlign.justify,
                               )
@@ -747,19 +848,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  /* FONCTION DE FORMATAGE VERTICAL SUPPRIMÉE
-  String _formatForVerticalReading(String text) {
-    return text.split('').join('\n');
-  }
-  */
-
-  List<TextSpan> _buildFormattedTextSpans(String text, TextStyle baseStyle) { // 'bool isVertical' SUPPRIMÉ
+  List<TextSpan> _buildFormattedTextSpans(String text, TextStyle baseStyle) {
     String processedText = text.replaceAll('—', ', ').replaceAll(',,', ',');
-    /* LOGIQUE VERTICALE SUPPRIMÉE
-    if (isVertical) {
-      processedText = _formatForVerticalReading(processedText);
-    }
-    */
 
     final List<TextSpan> spans = [];
     final List<String> parts = processedText.split('*');
@@ -779,7 +869,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
   Widget _buildChapterReader(Chapter chapter, int index, Novel novel) {
     final baseStyle = _getBaseTextStyle();
-    // final isVertical = novel.language == 'Japonais' && _readingDirection == ReadingDirection.vertical; // SUPPRIMÉ
 
     final titleStyle = baseStyle.copyWith(
         fontSize: baseStyle.fontSize != null ? baseStyle.fontSize! + 4 : null,
@@ -798,8 +887,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     final textContent = SelectableText.rich(
       TextSpan(
         children: [
-          ..._buildFormattedTextSpans("${chapter.title}\n\n", titleStyle), // , isVertical), // Modifié
-          ..._buildFormattedTextSpans(chapter.content, contentStyle), // , isVertical), // Modifié
+          ..._buildFormattedTextSpans("${chapter.title}\n\n", titleStyle),
+          ..._buildFormattedTextSpans(chapter.content, contentStyle),
         ],
       ),
       textAlign: TextAlign.justify,
@@ -812,10 +901,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           bool isValidForLookup = selectedText.isNotEmpty && selectedText != chapter.title.trim() && selectedText.length <= 50 && !selectedText.contains('\n');
           if (isValidForLookup && novel.language == 'Japonais') {
             _selectionTimer?.cancel();
-             // On appelle directement _triggerReadingAndTranslation sans délai
              if (mounted) { _triggerReadingAndTranslation(selectedText); }
           } else {
-            // Si la sélection n'est pas valide ou pas en japonais, on cache la zone de traduction
             if ((_selectedWord.isNotEmpty || _isLoadingTranslation || _translationResult != null) && mounted) {
               setState(() {
                 _selectedWord = '';
@@ -825,8 +912,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             }
           }
         } else if (cause == SelectionChangedCause.tap || cause == SelectionChangedCause.keyboard) {
-          // Si l'utilisateur clique ailleurs ou utilise le clavier, on cache la zone de traduction
-           if ((_selectedWord.isNotEmpty || _isLoadingTranslation || _translationResult != null) && mounted) {
+            if ((_selectedWord.isNotEmpty || _isLoadingTranslation || _translationResult != null) && mounted) {
               setState(() {
                 _selectedWord = '';
                 _translationResult = null;
@@ -841,12 +927,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     final bottomPadding = _showUIElements ? 120.0 : 60.0;
 
-    /* BLOC IF (isVertical) SUPPRIMÉ
-    if (isVertical) {
-      // ...
-    } else {
-    */
-      // Seul le bloc 'else' (lecture horizontale) est conservé
       return Container(
         color: _getCurrentBackgroundColor(),
         child: SingleChildScrollView(
@@ -855,13 +935,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           child: textContent,
         ),
       );
-    // } // FIN DU ELSE SUPPRIMÉ
   }
 
 
   Widget _buildChapterEditor() {
-    // ... (code identique) ...
-     final baseStyle = _getBaseTextStyle();
+    final baseStyle = _getBaseTextStyle();
     final theme = Theme.of(context);
     final hintColor = baseStyle.color?.withAlpha((255 * 0.5).round());
 
@@ -904,26 +982,23 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // --- AMÉLIORATION DE L'AFFICHAGE DES ERREURS DE TRADUCTION (Conservée) ---
   Widget _buildTranslationArea(ThemeData theme) {
     final translationBg = theme.colorScheme.surfaceContainerHighest;
     final textColor = _getCurrentTextColor();
 
     final labelStyle = theme.textTheme.bodySmall?.copyWith(color: textColor.withAlpha((255 * 0.7).round()));
     final valueStyle = theme.textTheme.bodyLarge?.copyWith(color: textColor, height: 1.5);
-    final errorStyle = valueStyle?.copyWith(color: theme.colorScheme.error); // Utilise la couleur d'erreur du thème
+    final errorStyle = valueStyle?.copyWith(color: theme.colorScheme.error);
     final titleStyle = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: textColor.withAlpha((255 * 0.9).round()));
 
-    // Récupération des valeurs et des erreurs potentielles
     final String? reading = _translationResult?['reading'];
     final String? translation = _translationResult?['translation'];
     final String? readingError = _translationResult?['readingError'];
     final String? translationError = _translationResult?['translationError'];
 
-    // Détermine si on a une info (valeur ou erreur) pour chaque section
     final bool hasReadingInfo = reading != null || readingError != null;
     final bool hasTranslationInfo = translation != null || translationError != null;
-    final bool hasAnyInfo = hasReadingInfo || hasTranslationInfo; // Utile si les deux échouent
+    final bool hasAnyInfo = hasReadingInfo || hasTranslationInfo;
 
     return Material(
       elevation: 2,
@@ -941,7 +1016,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              // Affiche le mot sélectionné
               'Infos pour : "${_selectedWord.length > 30 ? "${_selectedWord.substring(0, 30)}..." : _selectedWord}"',
               style: titleStyle,
               maxLines: 1,
@@ -950,40 +1024,33 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             const SizedBox(height: 12),
 
             _isLoadingTranslation
-                // Affiche l'indicateur de chargement
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Row( children: [
                       const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                        const SizedBox(width: 10),
-                        Text('Recherche infos...', style: theme.textTheme.bodyMedium?.copyWith(color: textColor.withAlpha((255 * 0.8).round()))),
-                      ],
+                      const SizedBox(width: 10),
+                      Text('Recherche infos...', style: theme.textTheme.bodyMedium?.copyWith(color: textColor.withAlpha((255 * 0.8).round()))),
+                    ],
                     ),
                   )
-                // Affiche les résultats ou les erreurs
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Section Lecture Hiragana
                       if (hasReadingInfo) ...[
                         Text("Lecture Hiragana :", style: labelStyle),
                         const SizedBox(height: 3),
-                        // Affiche l'erreur s'il y en a une, sinon la lecture
                         readingError != null
-                            ? SelectableText(readingError, style: errorStyle) // ERREUR ICI
-                            : SelectableText(reading ?? '(Non trouvée)', style: valueStyle), // VALEUR ICI
-                        if (hasTranslationInfo) const SizedBox(height: 10), // Espace si la traduction suit
+                            ? SelectableText(readingError, style: errorStyle)
+                            : SelectableText(reading ?? '(Non trouvée)', style: valueStyle),
+                        if (hasTranslationInfo) const SizedBox(height: 10),
                       ],
-                      // Section Traduction Français
                       if (hasTranslationInfo) ...[
                         Text("Traduction Français :", style: labelStyle),
                         const SizedBox(height: 3),
-                        // Affiche l'erreur s'il y en a une, sinon la traduction
                         translationError != null
-                            ? SelectableText(translationError, style: errorStyle) // ERREUR ICI
-                            : SelectableText(translation ?? '(Non trouvée)', style: valueStyle), // VALEUR ICI
+                            ? SelectableText(translationError, style: errorStyle)
+                            : SelectableText(translation ?? '(Non trouvée)', style: valueStyle),
                       ],
-                      // Message si aucune info n'est disponible (rare)
                       if (!hasAnyInfo)
                         Text("(Aucune information trouvée)", style: valueStyle?.copyWith(fontStyle: FontStyle.italic, color: textColor.withAlpha((255 * 0.6).round()))),
                     ],
@@ -996,8 +1063,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   Widget _buildEmptyState(ThemeData theme) {
-    // ... (code identique) ...
-     return Center(
+      return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
         child: Column(
@@ -1031,7 +1097,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     required bool isGenerating,
     required Novel novel,
   }) {
-    // ... (code identique) ...
     bool canGoBack = _currentPage > 0;
     bool hasChapters = novel.chapters.isNotEmpty;
     bool isLastPage = hasChapters && _currentPage == novel.chapters.length - 1;
@@ -1125,8 +1190,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
   Widget _buildAddChapterMenu(ThemeData theme, Novel novel) {
-    // ... (code identique) ...
-     final iconColor = _isGeneratingNextChapter ? theme.disabledColor : theme.colorScheme.primary;
+    final iconColor = _isGeneratingNextChapter ? theme.disabledColor : theme.colorScheme.primary;
     Color popupMenuColor;
     Color popupMenuTextColor;
     switch (Theme.of(context).brightness) {
@@ -1206,8 +1270,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (code identique) ...
-     final isDarkMode = ref.watch(themeServiceProvider) == ThemeMode.dark;
+    final isDarkMode = ref.watch(themeServiceProvider) == ThemeMode.dark;
     final theme = Theme.of(context);
     final currentBackgroundColor = _getCurrentBackgroundColor();
 
@@ -1235,11 +1298,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         final bool canDeleteChapter = novel.chapters.isNotEmpty && !isGenerating && _currentPage >= 0 && _currentPage < novel.chapters.length;
         final bool shouldShowTranslationArea = _selectedWord.isNotEmpty && (_isLoadingTranslation || _translationResult != null);
         final bool canEditChapter = novel.chapters.isNotEmpty && !isGenerating && _currentPage >= 0 && _currentPage < novel.chapters.length;
-        // final bool showReadingDirectionToggle = novel.language == 'Japonais'; // SUPPRIMÉ
 
         return PopScope(
           canPop: !isGenerating,
-          onPopInvokedWithResult: (bool didPop, _) {
+          // ✅ CORRECTION (Ligne 1310) : Signature de onPopInvoked corrigée
+          onPopInvoked: (bool didPop) { 
             if (!didPop) {
               if (isGenerating && mounted) {
                 _showSnackbarMessage("Veuillez attendre la fin de la génération en cours.", Colors.orangeAccent);
@@ -1291,16 +1354,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                               onPressed: () => Navigator.pop(context),
                             ),
                             actions: [
-                              /* BOUTON DE DIRECTION SUPPRIMÉ
-                              if (showReadingDirectionToggle)
-                                IconButton(
-                                  icon: Icon(_readingDirection == ReadingDirection.horizontal
-                                      ? Icons.swap_horiz
-                                      : Icons.swap_vert),
-                                  tooltip: 'Changer la direction de lecture',
-                                  onPressed: _toggleReadingDirection,
-                                ),
-                              */
                               PopupMenuButton<String>(
                                 icon: const Icon(Icons.more_vert),
                                 tooltip: 'Ouvrir le menu',
@@ -1309,6 +1362,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                     case 'info':
                                       _showNovelInfoSheet(novel);
                                       break;
+                                    // --- ✅ NOUVELLE ACTION : PLAN DIRECTEUR ---
+                                    case 'outline':
+                                      _showFutureOutlineDialog(novel);
+                                      break;
+                                    // --- FIN NOUVELLE ACTION ---
                                     case 'edit':
                                       _startEditing(novel);
                                       break;
@@ -1328,6 +1386,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                     value: 'info',
                                     child: ListTile(leading: Icon(Icons.info_outline), title: Text('Informations du roman')),
                                   ),
+                                  // --- ✅ NOUVEL ITEM DE MENU : PLAN DIRECTEUR ---
+                                  const PopupMenuItem<String>(
+                                    value: 'outline',
+                                    child: ListTile(leading: Icon(Icons.compass_calibration_outlined), title: Text('Plan Directeur')),
+                                  ),
+                                  // --- FIN NOUVEL ITEM ---
                                   PopupMenuItem<String>(
                                     value: 'edit',
                                     enabled: canEditChapter,
@@ -1415,7 +1479,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                   ? _buildEmptyState(theme)
                                   : PageView.builder(
                                       physics: _isEditing ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
-                                      key: ValueKey("${novel.id}_${novel.chapters.length}"), // MODIFIÉ : _$_readingDirection supprimé
+                                      key: ValueKey("${novel.id}_${novel.chapters.length}"),
                                       controller: _pageController,
                                       itemCount: novel.chapters.length,
                                       itemBuilder: (context, index) {
@@ -1452,7 +1516,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                           offset: _showUIElements ? Offset.zero : const Offset(0, 2),
                           child: Column(
                             children: [
-                               _buildProgressBars(theme, navBarPrimaryColor, navBarTextColor),
+                              _buildProgressBars(theme, navBarPrimaryColor, navBarTextColor),
                               _buildChapterNavigation(
                                 theme: theme,
                                 backgroundColor: navBarBgColor,
@@ -1477,8 +1541,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
   Widget _buildProgressBars(ThemeData theme, Color primaryColor, Color textColor) {
-    // ... (code identique) ...
-     final novel = ref.read(novelsProvider).value?.firstWhereOrNull((n) => n.id == widget.novelId);
+    final novel = ref.read(novelsProvider).value?.firstWhereOrNull((n) => n.id == widget.novelId);
     if (novel == null) return const SizedBox.shrink();
 
     final hasChapters = novel.chapters.isNotEmpty;
@@ -1514,4 +1577,4 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       ),
     );
   }
-} // Fin de NovelReaderPageState
+}

@@ -3,7 +3,7 @@
 import 'package:flutter/foundation.dart';
 
 /// L'ID du modèle d'IA par défaut utilisé pour la génération de chapitres.
-const String kDefaultModelId = 'z-ai/glm-4.5-air:free';
+const String kDefaultModelId = 'qwen/qwen3-235b-a22b:free';
 
 /// La liste centralisée des "écrivains" (modèles IA) disponibles pour la sélection.
 /// Modifiez cette map pour ajouter ou changer les modèles dans toute l'application.
@@ -12,12 +12,12 @@ final Map<String, Map<String, String>> kWritersMap = {
     'name': 'Longcat (Phase de test)',
     'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
   },
-  'z-ai/glm-4.5-air:free': {
-    'name': 'Z-ai (Phase de test)',
-    'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
-  },
   'qwen/qwen3-235b-a22b:free': {
     'name': 'Qwen 3.5B (Phase de test)',
+    'description': 'Vous le verez penser et raisonner, mais il est encore en phase de test.',
+  },
+  'openai/gpt-oss-20b:free': {
+    'name': 'GLM 4.5 (Phase de test)',
     'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
   },
 };
