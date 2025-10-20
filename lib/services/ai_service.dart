@@ -454,28 +454,20 @@ class AIService {
       final buffer = StringBuffer();
       buffer.writeln(languagePrompts.contextSectionHeader);
       
-      // 1. Le résumé du PASSÉ
-      if (roadMap != null && roadMap.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.roadmapHeader}:");
-        buffer.writeln(roadMap);
+      // 1. La dernière phrase (le point de départ le plus critique)
+      if(lastSentence != null && lastSentence.isNotEmpty) {
+          buffer.writeln("\n${languagePrompts.contextLastSentenceHeader}");
+          buffer.writeln('"$lastSentence"');
       }
-      
-      // 2. --- MODIFICATION : Le plan du FUTUR ---
-      if (futureOutline != null && futureOutline.isNotEmpty) {
-        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
-        buffer.writeln(futureOutline);
-        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
-      }
-      // --- FIN MODIFICATION ---
 
-      // 3. Le contexte IMMÉDIAT (le plus important)
+      // 2. Le contexte IMMÉDIAT (le chapitre précédent)
       if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
         final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
         buffer.writeln("\n$header");
         buffer.writeln(lastChapterContent);
       }
       
-      // 4. Le contexte pertinent (FAISS)
+      // 3. Le contexte pertinent (FAISS)
       if (similarChapters != null && similarChapters.isNotEmpty) {
         buffer.writeln("\n${languagePrompts.contextSimilarSectionHeader}");
         for (int i = 0; i < similarChapters.length; i++) {
@@ -483,11 +475,18 @@ class AIService {
           buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
         }
       }
+
+      // 4. Le plan du FUTUR (Le fil conducteur pour les 10 prochains chapitres)
+      if (futureOutline != null && futureOutline.isNotEmpty) {
+        buffer.writeln("\n${languagePrompts.futureOutlineHeader}");
+        buffer.writeln(futureOutline);
+        buffer.writeln(languagePrompts.futureOutlinePriorityRule);
+      }
       
-      // 5. La dernière phrase
-      if(lastSentence != null && lastSentence.isNotEmpty) {
-          buffer.writeln("\n${languagePrompts.contextLastSentenceHeader}");
-          buffer.writeln('"$lastSentence"');
+      // 5. Le résumé du PASSÉ (Le contexte général de toute l'histoire)
+      if (roadMap != null && roadMap.isNotEmpty) {
+        buffer.writeln("\n${languagePrompts.roadmapHeader}:");
+        buffer.writeln(roadMap);
       }
       
       buffer.writeln(languagePrompts.contextFollowInstruction);

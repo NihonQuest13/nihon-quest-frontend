@@ -27769,13 +27769,13 @@ n=A.c2(e.f,h,g)}if(c)m=e.ay
 else{g=B.f.j(a+1)
 m=A.c2(e.ax,h,g)}l=c?e.w:""
 g=""+(e.x+"\n")
-if(a2!=null&&a2.length!==0)g=g+("\n"+e.fx+":\n")+(a2+"\n")
-if(b!=null&&b.length!==0)g=g+("\n"+e.k1+"\n")+(b+"\n")+(e.k2+"\n")
+if(a0!=null&&a0.length!==0)g=g+("\n"+e.Q+"\n")+('"'+a0+'"\n')
 if(f!=null&&f.length!==0){s=B.f.j(a)
 g=g+("\n"+A.c2(e.y,"[CHAPTER_NUMBER]",s)+"\n")+(f+"\n")}if(J.ke(a3)){g+="\n"+e.z+"\n"
 for(s=e.go,p=e.fy,k=0;k<a3.length;k=j){j=k+1
 o=B.f.j(j)
-g+=A.c2(p,"[NUMBER]",o)+"\n"+a3[k]+"\n"+s+"\n"}}if(a0!=null&&a0.length!==0)g=g+("\n"+e.Q+"\n")+('"'+a0+'"\n')
+g+=A.c2(p,"[NUMBER]",o)+"\n"+a3[k]+"\n"+s+"\n"}}if(b!=null&&b.length!==0)g=g+("\n"+e.k1+"\n")+(b+"\n")+(e.k2+"\n")
+if(a2!=null&&a2.length!==0)g=g+("\n"+e.fx+":\n")+(a2+"\n")
 g+=e.as+"\n"
 s=a1.c
 return A.c2(n,i,s)+"\n- Niveau de langue: "+a1.d+"\n- Genre: "+a1.e+"\n\n"+(g.charCodeAt(0)==0?g:g)+"\n\n"+r+"\n\n"+l+"\n\n"+m+"\n"}},
