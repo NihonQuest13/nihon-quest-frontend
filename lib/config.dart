@@ -16,8 +16,12 @@ final Map<String, Map<String, String>> kWritersMap = {
     'name': 'Qwen 3.5B (Phase de test)',
     'description': 'Vous le verez penser et raisonner, mais il est encore en phase de test.',
   },
-  'openai/gpt-oss-20b:free': {
-    'name': 'GLM 4.5 (Phase de test)',
+  'meta-llama/llama-3.3-70b-instruct:free': {
+    'name': 'Llama (Phase de test)',
+    'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
+  },
+  'cognitivecomputations/dolphin-mistral-24b-venice-edition:free': {
+    'name': 'Venice (Phase de test)',
     'description': 'Toujours en phase de test, peut produire des résultats incohérents.',
   },
 };
