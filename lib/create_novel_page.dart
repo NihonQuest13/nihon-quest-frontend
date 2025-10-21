@@ -431,7 +431,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                       key: const ValueKey('futureOutlineField'), // Clé pour l'animation
                       controller: _futureOutlineController,
                       decoration: const InputDecoration(
-                        labelText: 'Écrivez votre propre Plan Directeur',
+                        labelText: 'Écrivez votre propre trame',
                         prefixIcon: Icon(Icons.timeline_outlined),
                         hintText: 'Décrivez les grandes lignes des prochains chapitres sous forme de sommaire...',
                       ),
