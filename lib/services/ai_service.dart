@@ -1,4 +1,4 @@
-// lib/services/ai_service.dart (Logique de Contexte C5+ Corrigée et avec débogage)
+// lib/services/ai_service.dart (MODIFIÉ POUR APPELER LE BACKEND ROADMAP)
 
 import 'dart:async';
 import 'dart:convert';
@@ -15,6 +15,7 @@ import '../config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
+import '../utils/app_logger.dart';
 
 
 Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
@@ -23,7 +24,6 @@ Future<String> _preparePromptIsolate(Map<String, dynamic> data) async {
   final isFinalChapter = data['isFinalChapter'] as bool;
   final backendUrl = data['backendUrl'] as String;
 
-  // Utiliser une nouvelle instance avec l'URL passée
   final localContextService = LocalContextService.withUrl(backendUrl);
 
   final LanguagePrompts currentLanguagePrompts = AIPrompts.getPromptsFor(novel.language);
@@ -111,7 +111,6 @@ class AIService {
 
   static final http.Client _client = http.Client();
 
-  /// Prépare le prompt pour l'IA en exécutant la logique de contexte dans un isolate séparé.
   static Future<String> preparePrompt({
     required Novel novel,
     required bool isFirstChapter,
@@ -126,7 +125,6 @@ class AIService {
     return await compute(_preparePromptIsolate, data);
   }
 
-  /// Établit une connexion de streaming avec le backend pour recevoir la génération de chapitre.
   static Stream<String> streamChapterFromPrompt({
     required String prompt,
     required String? modelId,
@@ -216,129 +214,9 @@ class AIService {
 
     return controller.stream;
   }
-
-  static Future<void> generateNextChapter(
-    Novel novel,
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    debugPrint(">>> Début de generateNextChapter pour chap ${novel.chapters.length + 1}");
-
-    final bool isFirstChapter = novel.chapters.isEmpty;
-
-    debugPrint(">>> Appel de preparePrompt (isFirstChapter: $isFirstChapter)...");
-
-    String prompt = "";
-    try {
-      prompt = await preparePrompt(
-        novel: novel,
-        isFirstChapter: isFirstChapter,
-        isFinalChapter: false,
-      );
-      debugPrint(">>> preparePrompt terminé avec succès.");
-
-    } catch (e, stackTrace) {
-      debugPrint("❌ ERREUR DANS preparePrompt LORS DE LA GÉNÉRATION DU CHAPITRE ${novel.chapters.length + 1} ❌");
-      debugPrint("Erreur: $e");
-      debugPrint("StackTrace: $stackTrace");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Erreur lors de la préparation du contexte: ${e.toString()}"),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 8),
-          ),
-        );
-      }
-      return;
-    }
-
-
-    debugPrint("=========================================================");
-    debugPrint("           PROMPT FINAL ENVOYÉ À L'IA                   ");
-    debugPrint("           (Généré par l'isolate)                     ");
-    debugPrint("=========================================================");
-    debugPrint(prompt);
-    debugPrint("---------------------------------------------------------");
-    debugPrint("Taille du prompt : ${prompt.length} caractères");
-    debugPrint("=========================================================");
-
-    if (!context.mounted) {
-       debugPrint(">>> Contexte non monté APRÈS preparePrompt. Arrêt.");
-       return;
-    }
-    debugPrint(">>> Contexte est monté. Appel de streamChapterFromPrompt...");
-
-
-    final stream = streamChapterFromPrompt(
-      prompt: prompt,
-      modelId: novel.modelId,
-      language: novel.language,
-    );
-
-    final StringBuffer contentBuffer = StringBuffer();
-
-    try {
-      await for (final chunk in stream) {
-        contentBuffer.write(chunk);
-      }
-
-      if (!context.mounted) return;
-
-      final LanguagePrompts prompts = AIPrompts.getPromptsFor(novel.language);
-      final Chapter newChapter = extractTitleAndContent(
-        contentBuffer.toString(),
-        novel.chapters.length,
-        isFirstChapter,
-        false, // isFinalChapter
-        prompts,
-      );
-
-      novel.chapters.add(newChapter);
-      novel.updatedAt = DateTime.now();
-
-      await ref.read(novelsProvider.notifier).updateNovel(novel);
-
-      await ref.read(roadmapServiceProvider).triggerRoadmapUpdateIfNeeded(novel, context);
-
-      final syncTask = SyncTask(
-        action: 'add',
-        novelId: novel.id,
-        content: newChapter.content,
-        chapterIndex: novel.chapters.length - 1,
-      );
-      await ref.read(syncServiceProvider).addTask(syncTask);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Chapitre ${novel.chapters.length} généré avec succès !"),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-
-    } catch (e) {
-      debugPrint("Erreur critique lors de la génération du chapitre : $e");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Échec de la génération du chapitre: ${e.toString()}"),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 8),
-          ),
-        );
-      }
-      throw ApiException("Échec de la génération du chapitre: $e");
-    }
-  }
-
+  
   static Future<String> generateFutureOutline(Novel novel) async {
-    debugPrint("Génération du plan directeur futur pour le roman ${novel.title}...");
+    AppLogger.info("Génération du plan directeur futur pour le roman ${novel.title}...", tag: "AIService");
     final languagePrompts = AIPrompts.getPromptsFor(novel.language);
 
     final String prompt = languagePrompts.futureOutlinePrompt
@@ -360,90 +238,129 @@ class AIService {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
-
         final rawContent = data['content'] as String? ?? '';
         final cleanedContent = cleanAIResponse(rawContent);
-
-        debugPrint("Plan directeur généré : \n$cleanedContent");
+        AppLogger.success("Plan directeur (futur) généré. Longueur: ${cleanedContent.length}", tag: "AIService");
         return cleanedContent;
       } else {
         final errorMsg = _extractApiError(response);
-        debugPrint("Erreur API (${response.statusCode}) lors de la génération du plan: $errorMsg");
+        AppLogger.error("Erreur API (${response.statusCode}) lors de la génération du plan: $errorMsg", tag: "AIService");
         throw ApiException(errorMsg, statusCode: response.statusCode);
       }
-    } catch (e) {
-      debugPrint("Erreur de connexion lors de la génération du plan: $e");
-      if (e is TimeoutException) {
+    } on TimeoutException catch (e) {
+        AppLogger.error("Timeout lors de la génération du plan futur", error: e, tag: "AIService");
         throw ApiConnectionException("Le délai de la génération du plan a expiré (2 minutes).");
-      }
+    } catch (e) {
+      AppLogger.error("Erreur inattendue lors de la génération du plan futur", error: e, tag: "AIService");
       throw ApiException("Erreur lors de la génération du plan: ${e.toString()}");
     }
   }
 
   static Future<String> updateRoadMap(Novel novel) async {
-    debugPrint("Appel à updateRoadMap (résumé du PASSÉ)...");
-    return novel.roadMap ?? "Le résumé du passé sera mis à jour par le backend.";
+    final int chapterCount = novel.chapters.length;
+    AppLogger.info("Appel à updateRoadMap (génération du résumé PASSÉ) pour ${novel.title} ($chapterCount chapitres)...", tag: "AIService");
+
+    List<Chapter> relevantChapters;
+    if (chapterCount < 3) {
+      AppLogger.warning("Moins de 3 chapitres, impossible de générer la roadmap.", tag: "AIService");
+      return novel.roadMap ?? "Pas assez de chapitres pour générer un résumé.";
+    } else if (chapterCount == 4 && novel.chapters.length >= 3) {
+      // Cas de la toute première génération (au 4ème chapitre)
+      relevantChapters = novel.chapters.sublist(0, 3);
+      AppLogger.info("Utilisation des 3 premiers chapitres pour la création initiale de la roadmap.", tag: "AIService");
+    } else {
+      // Cas des mises à jour suivantes (prendre les 3 derniers)
+      relevantChapters = novel.chapters.sublist(chapterCount - 3);
+      AppLogger.info("Utilisation des 3 derniers chapitres (indices ${chapterCount - 3} à ${chapterCount - 1}) pour la mise à jour de la roadmap.", tag: "AIService");
+    }
+
+    final List<String> chaptersContent = relevantChapters.map((c) => "Chapitre ${novel.chapters.indexOf(c) + 1}: ${c.title}\n${c.content}").toList();
+
+    final requestBody = {
+      'novel_id': novel.id,
+      'title': novel.title,
+      'genre': novel.genre,
+      'specifications': novel.specifications,
+      'language': novel.language,
+      'model_id': novel.modelId ?? _defaultPlannerModel,
+      'chapters_content': chaptersContent,
+      'current_roadmap': novel.roadMap,
+    };
+
+    AppLogger.info("Envoi de la requête au backend /generate_roadmap...", tag: "AIService");
+
+    try {
+      final response = await _client.post(
+        Uri.parse('$_backendUrl/generate_roadmap'),
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 180));
+
+      AppLogger.info("Réponse reçue du backend /generate_roadmap (Status: ${response.statusCode})", tag: "AIService");
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        final newRoadmap = data['new_roadmap'] as String? ?? '';
+
+        if (newRoadmap.isEmpty) {
+          AppLogger.error("Le backend a retourné une roadmap vide.", tag: "AIService");
+          throw ApiException("Le service de résumé n'a retourné aucun contenu.", statusCode: 500);
+        }
+        AppLogger.success("Nouvelle roadmap (passé) reçue du backend. Longueur: ${newRoadmap.length}", tag: "AIService");
+        return newRoadmap;
+      } else {
+        final errorMsg = _extractApiError(response);
+        String detailError = errorMsg;
+        try {
+           final errorBody = jsonDecode(utf8.decode(response.bodyBytes));
+           if (errorBody['detail'] != null) { detailError = errorBody['detail'].toString(); }
+        } catch (_) {}
+        AppLogger.error("Erreur API backend (${response.statusCode}) lors de la génération de la roadmap: $detailError", tag: "AIService");
+        throw ApiException("Erreur lors de la génération du résumé: $detailError", statusCode: response.statusCode);
+      }
+    } on TimeoutException catch (e) {
+       AppLogger.error("Timeout lors de l'appel à /generate_roadmap", error: e, tag: "AIService");
+       throw ApiConnectionException("Le délai pour générer le résumé a expiré (3 minutes).");
+    } catch (e) {
+       AppLogger.error("Erreur inattendue lors de l'appel à /generate_roadmap", error: e, tag: "AIService");
+      if (e is ApiException) rethrow;
+      throw ApiException("Erreur de communication lors de la génération du résumé: ${e.toString()}");
+    }
   }
 
-  static Future<Map<String, String?>> getReadingAndTranslation(String word, SharedPreferences prefs) async {
-     debugPrint("Appel du backend pour traduction de : $word");
 
+  static Future<Map<String, String?>> getReadingAndTranslation(String word, SharedPreferences prefs) async {
+     AppLogger.info("Appel du backend pour traduction de : '$word'", tag: "AIService");
      try {
         final response = await _client.post(
           Uri.parse('$_backendUrl/translate'),
           headers: {'Content-Type': 'application/json; charset=utf-8'},
-          body: jsonEncode({
-            'word': word,
-            'target_lang': 'FR',
-            }),
+          body: jsonEncode({'word': word, 'target_lang': 'FR'}),
         ).timeout(const Duration(seconds: 20));
-
         if (response.statusCode == 200) {
           final Map<String, dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
-          return {
-            'reading': null,
-            'translation': data['translation'],
-            'readingError': null,
-            'translationError': null,
-          };
+          return {'reading': null, 'translation': data['translation'], 'readingError': null, 'translationError': null};
         } else {
           final errorMsg = _extractApiError(response);
-          debugPrint("Erreur API (${response.statusCode}) lors de la traduction: $errorMsg");
-          return {
-            'reading': null,
-            'translation': null,
-            'readingError': null,
-            'translationError': "Erreur $errorMsg (${response.statusCode})",
-          };
+          AppLogger.error("Erreur API (${response.statusCode}) lors de la traduction: $errorMsg", tag: "AIService");
+          return {'reading': null, 'translation': null, 'readingError': null, 'translationError': "Erreur $errorMsg (${response.statusCode})"};
         }
      } catch (e) {
-        debugPrint("Erreur de connexion lors de la traduction: $e");
+        AppLogger.error("Erreur de connexion lors de la traduction", error: e, tag: "AIService");
         String errorDetail = (e is TimeoutException) ? "Timeout" : "Erreur réseau";
-        return {
-          'reading': null,
-          'translation': null,
-          'readingError': null,
-          'translationError': 'Impossible de joindre le service de traduction ($errorDetail).',
-        };
+        return {'reading': null, 'translation': null, 'readingError': null, 'translationError': 'Impossible de joindre le service de traduction ($errorDetail).'};
      }
   }
 
   static String _extractApiError(http.Response response) {
     try {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is Map && decoded['detail'] is String) {
-        return decoded['detail'];
-      }
-      if (decoded is Map && decoded['error']?['message'] is String) {
-        return decoded['error']['message'];
-      }
-    } catch (_) {
-      // Ignorer
-    }
+      if (decoded is Map && decoded['detail'] is String) { return decoded['detail']; }
+      if (decoded is Map && decoded['error']?['message'] is String) { return decoded['error']['message']; }
+    } catch (_) {}
     return response.reasonPhrase ?? 'Erreur inconnue du serveur';
   }
 
-  /// ✅ Renommée en 'cleanAIResponse' et rendue publique
   static String cleanAIResponse(String rawText) {
     final regex = RegExp(r'<think>.*?</think>', dotAll: true, caseSensitive: false);
     return rawText.replaceAll(regex, '').trim();
@@ -456,9 +373,7 @@ class AIService {
     bool isFinalChapter,
     LanguagePrompts languagePrompts
   ) {
-
     final String cleanedRawContent = cleanAIResponse(rawContent);
-
     String defaultTitle;
     if (isFirstChapter) {
       defaultTitle = languagePrompts.titleFirst;
@@ -467,63 +382,45 @@ class AIService {
     } else {
       defaultTitle = "${languagePrompts.titleChapterPrefix}${currentChapterCount + 1}${languagePrompts.titleChapterSuffix}";
     }
-
     String chapterTitle = defaultTitle;
     String chapterContent = cleanedRawContent.trim();
-
     final lines = cleanedRawContent.trim().split('\n');
     if (lines.isNotEmpty) {
         final firstLine = lines.first.trim();
         final titleRegex = RegExp(r"^(?:Chapitre|Chapter|Capítulo|Capitolo|第[一二三四五六七八九十百千\d]+章|第一章|最終章)\s*\d*\s*[:：-]?\s*(.*)", caseSensitive: false);
         final match = titleRegex.firstMatch(firstLine);
-
         if (match != null) {
             String extracted = match.group(1)!.trim();
-            if (extracted.isNotEmpty) {
-              chapterTitle = extracted;
-            }
+            if (extracted.isNotEmpty) { chapterTitle = extracted; }
             chapterContent = lines.sublist(1).join('\n').trim();
         } else if (lines.length > 1 && lines[0].length < 80 && lines[1].trim().isEmpty) {
             chapterTitle = lines[0];
             chapterContent = lines.sublist(2).join('\n').trim();
         }
     }
-
     chapterTitle = chapterTitle.replaceAll(RegExp(r'["`*]'), '').trim();
-
     String finalContent = chapterContent;
     if (finalContent.isNotEmpty) {
         final trimmedContent = finalContent.trim();
         const terminalChars = ['.', '!', '?', '。', '！', '？', '…'];
-
         if (trimmedContent.isNotEmpty && !terminalChars.contains(trimmedContent[trimmedContent.length - 1])) {
-            debugPrint("La dernière phrase du chapitre généré est incomplète. Nettoyage...");
-
+            AppLogger.warning("La dernière phrase du chapitre généré est incomplète. Nettoyage...", tag: "AIService");
             int lastPunctuationIndex = -1;
             for (final char in terminalChars) {
                 int index = trimmedContent.lastIndexOf(char);
-                if (index > lastPunctuationIndex) {
-                    lastPunctuationIndex = index;
-                }
+                if (index > lastPunctuationIndex) { lastPunctuationIndex = index; }
             }
-
             if (lastPunctuationIndex != -1) {
                 finalContent = trimmedContent.substring(0, lastPunctuationIndex + 1);
-                debugPrint("Contenu du chapitre tronqué pour terminer sur une phrase complète.");
+                AppLogger.info("Contenu du chapitre tronqué pour terminer sur une phrase complète.", tag: "AIService");
             } else {
                 finalContent = "";
-                debugPrint("Aucune phrase terminée trouvée dans le chapitre généré. Le contenu a été vidé.");
+                AppLogger.error("Aucune phrase terminée trouvée dans le chapitre généré. Le contenu a été vidé.", tag: "AIService");
             }
         }
     }
-
-    return Chapter(
-      title: chapterTitle,
-      content: finalContent.trim(),
-      createdAt: DateTime.now(),
-    );
+    return Chapter(title: chapterTitle, content: finalContent.trim(), createdAt: DateTime.now());
   }
-
 
   static String _buildChapterPrompt({
     required Novel novel,
@@ -542,11 +439,8 @@ class AIService {
         .replaceAll('[NOVEL_GENRE]', novel.genre)
         .replaceAll('[NOVEL_SPECIFICATIONS]', novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications)
         .replaceAll('[NOVEL_LANGUAGE]', novel.language);
-
     if (isFirstChapter) {
-      String intro = languagePrompts.firstChapterIntro
-          .replaceAll('[NOVEL_TITLE]', novel.title);
-
+      String intro = languagePrompts.firstChapterIntro.replaceAll('[NOVEL_TITLE]', novel.title);
       final buffer = StringBuffer();
       buffer.writeln("--- TÂCHE ---");
       buffer.writeln(intro);
@@ -555,36 +449,24 @@ class AIService {
       buffer.writeln("- Niveau: ${novel.level}");
       buffer.writeln("- Genre: ${novel.genre}");
       buffer.writeln("- Spécifications: ${novel.specifications.isEmpty ? languagePrompts.contextNotAvailable : novel.specifications}");
-
       if (futureOutline != null && futureOutline.isNotEmpty) {
         buffer.writeln("\n--- CONTEXTE FUTUR (GUIDE) ---");
         buffer.writeln(languagePrompts.futureOutlineHeader);
         buffer.writeln(futureOutline);
         buffer.writeln(languagePrompts.futureOutlinePriorityRule);
       }
-
       buffer.writeln("\n--- RÈGLES DE GÉNÉRATION ---");
       buffer.writeln(commonInstructions);
       buffer.writeln("\n--- FORMAT DE SORTIE ---");
       buffer.writeln(languagePrompts.outputFormatFirst);
       return buffer.toString();
     }
-
-    final String intro = isFinalChapter
-        ? languagePrompts.finalChapterIntro
-        : languagePrompts.nextChapterIntro.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
-
-    final String outputFormat = isFinalChapter
-        ? languagePrompts.outputFormatFinal
-        : languagePrompts.outputFormatNext.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
-
+    final String intro = isFinalChapter ? languagePrompts.finalChapterIntro : languagePrompts.nextChapterIntro.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
+    final String outputFormat = isFinalChapter ? languagePrompts.outputFormatFinal : languagePrompts.outputFormatNext.replaceAll('[NEXT_CHAPTER_NUMBER]', (currentChapterCount + 1).toString());
     final String finalChapterInstructions = isFinalChapter ? languagePrompts.finalChapterSpecificInstructions : "";
-
     final buffer = StringBuffer();
-
     buffer.writeln("--- TÂCHE ---");
     buffer.writeln(intro);
-
     if (lastSentence != null && lastSentence.isNotEmpty) {
         buffer.writeln("\n--- ANCRAGE IMMÉDIAT (PRIORITÉ ABSOLUE) ---");
         buffer.writeln(languagePrompts.contextLastSentenceHeader);
@@ -593,7 +475,6 @@ class AIService {
     } else {
       buffer.writeln("\n[AVERTISSEMENT: La dernière phrase du chapitre précédent est manquante. Continuez logiquement.]");
     }
-
     buffer.writeln("\n--- CONTEXTE PASSÉ (MÉMOIRE IMMÉDIATE) ---");
     if (lastChapterContent != null && lastChapterContent.isNotEmpty) {
       final header = languagePrompts.contextLastChapterHeader.replaceAll('[CHAPTER_NUMBER]', currentChapterCount.toString());
@@ -602,20 +483,17 @@ class AIService {
     } else {
       buffer.writeln("[AVERTISSEMENT: Le contexte du chapitre précédent (N-1) est manquant.]");
     }
-
     if (roadMap != null && roadMap.isNotEmpty && currentChapterCount >= 4) {
       buffer.writeln("\n--- CONTEXTE PASSÉ (RÉSUMÉ GLOBAL) ---");
       buffer.writeln(languagePrompts.roadmapHeader);
       buffer.writeln(roadMap);
     }
-
     if (futureOutline != null && futureOutline.isNotEmpty) {
       buffer.writeln("\n--- CONTEXTE FUTUR (GUIDE) ---");
       buffer.writeln(languagePrompts.futureOutlineHeader);
       buffer.writeln(futureOutline);
       buffer.writeln(languagePrompts.futureOutlinePriorityRule);
     }
-
     if (similarChapters != null && similarChapters.isNotEmpty) {
       buffer.writeln("\n--- CONTEXTE PERTINENT (EXTRAITS DE LA MÉMOIRE) ---");
       buffer.writeln(languagePrompts.contextSimilarSectionHeader);
@@ -624,14 +502,11 @@ class AIService {
         buffer.writeln("$excerptHeader\n${similarChapters[i]}\n${languagePrompts.similarExcerptFooter}");
       }
     }
-
     buffer.writeln("\n--- RÈGLES DE GÉNÉRATION ---");
     buffer.writeln(commonInstructions);
     buffer.writeln(finalChapterInstructions);
-
     buffer.writeln("\n--- FORMAT DE SORTIE ---");
     buffer.writeln(outputFormat);
-
     return buffer.toString();
   }
 }
