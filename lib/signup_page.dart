@@ -1,6 +1,8 @@
-// lib/signup_page.dart (CORRIGÉ SELON LE SQL)
+// lib/signup_page.dart (CORRIGÉ SELON LE SQL ET POUR UPDATE + IMPORTS)
 import 'package:flutter/material.dart';
+// ✅ CORRECTION: Import path corrigé et imports ajoutés
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'utils/app_logger.dart'; // Import pour AppLogger
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -10,12 +12,12 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  // ✅ Renommés pour correspondre au SQL (prénom = first_name, nom = last_name)
+  // Renommés pour correspondre au SQL (prénom = first_name, nom = last_name)
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _firstNameController = TextEditingController(); // Prénom
   final _lastNameController = TextEditingController();  // Nom
-  
+
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
@@ -23,17 +25,18 @@ class _SignUpPageState extends State<SignUpPage> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _firstNameController.dispose(); // ✅ Ajouté
-    _lastNameController.dispose();  // ✅ Ajouté
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     super.dispose();
   }
 
   // --- Fonction _signUp entièrement Corrigée ---
   Future<void> _signUp() async {
     if (!mounted) return;
-    
+
     // Valider le formulaire
-    if (!_formKey.currentState!.validate()) {
+    final isValid = _formKey.currentState?.validate() ?? false;
+    if (!isValid) {
       return;
     }
 
@@ -47,71 +50,80 @@ class _SignUpPageState extends State<SignUpPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      
+
+      // Le trigger 'handle_new_user' s'exécute automatiquement ici
+
       if (authResponse.user == null) {
-        throw const AuthException("Erreur : La création de l'utilisateur a échoué.");
+        throw const AuthException("Erreur lors de la création de l'utilisateur. L'email existe peut-être déjà.");
       }
-      
       final userId = authResponse.user!.id;
 
-      // 2. INSERTION PROFILES (Étape 2)
-      // ✅ Payload corrigé pour correspondre EXACTEMENT à ton SQL
-      await Supabase.instance.client.from('profiles').insert({
-        'id': userId,
-        'first_name': _firstNameController.text.trim(), // Prénom
-        'last_name': _lastNameController.text.trim(),   // Nom
-        'status': 'pending' // Correspond à ton DEFAULT 'pending'
-      });
 
-      // 3. SUCCÈS (Seulement si les étapes 1 et 2 ont réussi)
-      // ✅ Correction du bug du double message : le succès est DÉCLARÉ ICI.
+      // 2. MISE À JOUR PROFILES (Étape 2 - Modification: UPDATE au lieu d'INSERT)
+      await Supabase.instance.client
+          .from('profiles')
+          .update({
+            'first_name': _firstNameController.text.trim(),
+            'last_name': _lastNameController.text.trim(),
+          })
+          .eq('id', userId);
+
+
+      // 3. SUCCÈS
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Inscription réussie. Votre compte sera validé prochainement."),
+            content: Text("Inscription réussie ! Un email de confirmation a été envoyé (si activé). Votre compte sera validé prochainement."),
             backgroundColor: Colors.green,
           ),
         );
-        
+
         // On redirige vers la page de login après un court délai
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            if (Navigator.of(context).canPop()) {
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && Navigator.of(context).canPop()) {
               Navigator.of(context).pop(); // Retourne à la page de login
-            }
           }
         });
       }
 
-    } on AuthException catch (error) {
-      // Gère les erreurs d'authentification (ex: "User already exists")
+    } on AuthException catch (error) { // ✅ Correction: Type correct
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error.message),
+            content: Text("Erreur d'authentification: ${error.message}"),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
-    } catch (error) {
-      // Gère les erreurs d'insertion (ex: RLS, table 'profiles' mal configurée)
-      if (mounted) {
-        debugPrint("Erreur insertion profile: ${error.toString()}"); // Pour ton débogage
+    } on PostgrestException catch (error) { // ✅ Correction: Type correct
+       if (mounted) {
+        AppLogger.error("Erreur Postgrest lors de la mise à jour du profil", error: error, tag: "SignUpPage");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text("Une erreur est survenue lors de la création du profil."),
+            content: const Text("Une erreur est survenue lors de la finalisation de l'inscription."),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+    catch (error, stackTrace) {
+      if (mounted) {
+        AppLogger.error("Erreur inattendue lors de l'inscription", error: error, stackTrace: stackTrace, tag: "SignUpPage");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Une erreur inattendue est survenue."),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
     } finally {
-      // On arrête le chargement dans tous les cas
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
   }
   // --- Fin de la fonction corrigée ---
+
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +160,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   const SizedBox(height: 40),
 
-                  // ✅ Champ Prénom (first_name)
+                  // Champ Prénom (first_name)
                   TextFormField(
                     controller: _firstNameController,
                     decoration: InputDecoration(
@@ -156,6 +168,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
                     ),
                     keyboardType: TextInputType.name,
+                    textCapitalization: TextCapitalization.words,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Veuillez entrer votre prénom';
@@ -166,8 +179,8 @@ class _SignUpPageState extends State<SignUpPage> {
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                   ),
                   const SizedBox(height: 20),
-                  
-                  // ✅ Champ Nom (last_name)
+
+                  // Champ Nom (last_name)
                   TextFormField(
                     controller: _lastNameController,
                     decoration: InputDecoration(
@@ -175,6 +188,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
                     ),
                     keyboardType: TextInputType.name,
+                    textCapitalization: TextCapitalization.words,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Veuillez entrer votre nom';
@@ -199,8 +213,8 @@ class _SignUpPageState extends State<SignUpPage> {
                       if (value == null || value.trim().isEmpty) {
                         return 'Veuillez entrer un email';
                       }
-                      if (!value.contains('@') || !value.contains('.')) {
-                        return 'Veuillez entrer un email valide';
+                      if (!RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value)) {
+                         return 'Veuillez entrer un email valide';
                       }
                       return null;
                     },
@@ -230,7 +244,7 @@ class _SignUpPageState extends State<SignUpPage> {
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                   ),
                   const SizedBox(height: 24),
-                  
+
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: theme.colorScheme.primary,
