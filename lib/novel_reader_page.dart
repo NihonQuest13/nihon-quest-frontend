@@ -1033,11 +1033,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // ✅ CORRECTION : Le nettoyage est retiré d'ici
   List<TextSpan> _buildFormattedTextSpans(String text, TextStyle baseStyle) {
+    String processedText = text.replaceAll('—', ', ').replaceAll(',,', ',');
+
     final List<TextSpan> spans = [];
-    // Le texte est maintenant splitté directement, sans nettoyage préalable.
-    final List<String> parts = text.split('*');
+    final List<String> parts = processedText.split('*');
 
     for (int i = 0; i < parts.length; i++) {
       if (i.isOdd) {

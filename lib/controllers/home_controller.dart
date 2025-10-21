@@ -96,16 +96,21 @@ class HomeController {
         false,
         AIPrompts.getPromptsFor(newNovel.language),
       );
-      newNovel.addChapter(firstChapter);
       
-      await _ref.read(novelsProvider.notifier).addNovel(newNovel);
+      // ✅ CORRECTION: Utiliser la méthode immuable de Novel
+      final novelWithChapter = newNovel.novelWithAddedChapter(firstChapter);
+      
+      // ✅ CORRECTION: Utiliser l'objet Novel mis à jour
+      await _ref.read(novelsProvider.notifier).addNovel(novelWithChapter);
       if (_context.mounted) {
-        _showFeedback('Roman "${newNovel.title}" créé avec succès !');
+        // ✅ CORRECTION: Utiliser le titre de l'objet Novel mis à jour
+        _showFeedback('Roman "${novelWithChapter.title}" créé avec succès !');
       }
 
       final syncTask = SyncTask(
         action: 'add',
-        novelId: newNovel.id,
+        // ✅ CORRECTION: Utiliser l'ID de l'objet Novel mis à jour
+        novelId: novelWithChapter.id,
         content: firstChapter.content,
         chapterIndex: 0,
       );
