@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:collection/collection.dart'; // Pour firstWhereOrNull
+import 'package:japanese_story_app/utils/app_logger.dart'; // ✅ AJOUT: Importer AppLogger
 
 import 'models.dart';
 import 'services/local_context_service.dart';
@@ -72,7 +73,7 @@ class ThemeService extends ValueNotifier<ThemeMode> {
          value = ThemeMode.system; // Défaut si rien n'est sauvegardé ou invalide
       }
     } catch (e) {
-      debugPrint("Erreur chargement thème: $e");
+      AppLogger.error("Erreur chargement thème", error: e, tag:"ThemeService");
       value = ThemeMode.system;
     }
   }
@@ -88,7 +89,7 @@ class ThemeService extends ValueNotifier<ThemeMode> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_themePrefKey, themeMode.index);
     } catch (e) {
-      debugPrint("Erreur sauvegarde thème: $e");
+      AppLogger.error("Erreur sauvegarde thème", error: e, tag:"ThemeService");
     }
   }
 }
@@ -157,11 +158,11 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
 
     final currentUserId = _userId;
     if (currentUserId == null) {
-      debugPrint("[NovelsProvider] Aucun utilisateur connecté, retour d'une liste vide.");
+      AppLogger.info("Aucun utilisateur connecté, retour liste vide.", tag: "NovelsProvider");
       return [];
     }
 
-    debugPrint("[NovelsProvider] Récupération des romans depuis Supabase (User: $currentUserId, Tri: $sortOption)...");
+    AppLogger.info("Récupération romans depuis Supabase (User: $currentUserId, Tri: $sortOption)...", tag: "NovelsProvider");
 
     try {
       // La requête ne filtre plus par user_id ici, RLS s'en charge
@@ -170,26 +171,32 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
           .select('*, chapters(*)') // Récupère les romans ET leurs chapitres associés
           // RLS filtre automatiquement les romans auxquels l'utilisateur a accès
           .order('updated_at', ascending: false) // Tri principal par défaut
-          // Tri secondaire pour les chapitres (utile pour Novel.fromJson)
+          // Tri secondaire pour les chapitres par Supabase (important)
           .order('created_at', referencedTable: 'chapters', ascending: true);
 
       // Mapper les données JSON en objets Novel
       final novels = novelsData.map((novelRow) {
         try {
+          // Novel.fromJson trie déjà les chapitres lors du parsing
           return Novel.fromJson(novelRow);
         } catch (e, stacktrace) {
-          debugPrint("Erreur de parsing Novel ID ${novelRow['id']}: $e \n$stacktrace");
+          AppLogger.error("Erreur parsing Novel ID ${novelRow['id']}", error: e, stackTrace: stacktrace, tag: "NovelsProvider");
           return null; // Ignore les romans qui ne peuvent pas être parsés
         }
       }).whereType<Novel>().toList(); // Filtrer les nulls
 
-      debugPrint("[NovelsProvider] ${novels.length} romans récupérés et parsés.");
+      // ✅ SÉCURITÉ : Assurer le tri des chapitres APRÈS le chargement complet, au cas où Supabase ou fromJson échouerait.
+      for (var novel in novels) {
+        novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      }
 
-      // Appliquer le tri côté client
+      AppLogger.info("${novels.length} romans récupérés et parsés.", tag: "NovelsProvider");
+
+      // Appliquer le tri des ROMANS côté client
       return _sortNovels(novels, sortOption);
 
     } catch (e, stacktrace) {
-       debugPrint("[NovelsProvider] Erreur lors de la récupération des romans: $e \n$stacktrace");
+       AppLogger.error("Erreur lors de la récupération des romans", error: e, stackTrace: stacktrace, tag: "NovelsProvider");
        // Retourne l'erreur pour que l'UI puisse l'afficher
        throw Exception("Impossible de charger les romans: $e");
     }
@@ -216,7 +223,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         break;
       case SortOption.updatedAt:
         // Le tri par défaut de Supabase est déjà par updatedAt descendant
-        // sortedList.sort((a, b) => b.updatedAt.compareTo(a.updatedAt)); // Déjà fait par la requête
+        sortedList.sort((a, b) => b.updatedAt.compareTo(a.updatedAt)); // Assurer le tri même si Supabase change
         break;
     }
     return sortedList;
@@ -242,6 +249,8 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     // Préparer les données pour Supabase
     final novelData = _novelToSupabaseJson(novel, currentUserId);
     final chaptersData = novel.chapters.map((chapter) {
+      // ✅ Assurer le tri avant de préparer les données chapitre
+      novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       final chapterJson = chapter.toJson();
       chapterJson['novel_id'] = novel.id; // Lier le chapitre au roman
       return chapterJson;
@@ -250,7 +259,9 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     // Mettre à jour l'état local immédiatement (optimiste)
     state = await AsyncValue.guard(() async {
       final currentNovels = state.value ?? [];
-      // Ajoute au début et re-trie selon l'option actuelle
+      // Ajoute au début et re-trie les romans selon l'option actuelle
+      // ✅ Assurer le tri des chapitres DANS le novel ajouté
+      novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       return _sortNovels([novel, ...currentNovels], ref.read(sortOptionProvider));
     });
 
@@ -260,10 +271,10 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       if (chaptersData.isNotEmpty) {
         await _supabase.from('chapters').insert(chaptersData);
       }
-      debugPrint("[NovelsProvider] Roman ${novel.id} ajouté avec succès.");
+      AppLogger.info("Roman ${novel.id} ajouté avec succès.", tag: "NovelsProvider");
       // Pas besoin d'invalider ici, la mise à jour optimiste a fonctionné
     } catch (e) {
-      debugPrint("[NovelsProvider] Erreur lors de l'ajout du roman ${novel.id}: $e. Réversion et rechargement...");
+      AppLogger.error("Erreur lors de l'ajout du roman ${novel.id}", error: e, tag: "NovelsProvider");
       // En cas d'erreur, invalider pour récupérer l'état réel de la BDD
       ref.invalidateSelf();
       // Propager l'erreur pour que l'UI puisse la gérer
@@ -276,6 +287,9 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     final currentUserId = _userId;
     if (currentUserId == null) throw Exception('Utilisateur non authentifié');
 
+    // ✅ Assurer le tri des chapitres avant sauvegarde et mise à jour état
+    updatedNovel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
     final novelData = _novelToSupabaseJson(updatedNovel, currentUserId);
 
     // Mise à jour optimiste de l'état local
@@ -284,19 +298,19 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
        final index = currentNovels.indexWhere((n) => n.id == updatedNovel.id);
        if (index != -1) {
          final newList = List<Novel>.from(currentNovels);
-         newList[index] = updatedNovel;
-         // Re-trie si nécessaire (updatedAt a changé)
+         newList[index] = updatedNovel; // Remplacer par le novel mis à jour (avec chapitres triés)
+         // Re-trie les romans si nécessaire
          return _sortNovels(newList, ref.read(sortOptionProvider));
        }
-       return currentNovels; // Retourne la liste inchangée si non trouvé (ne devrait pas arriver)
+       return currentNovels; // Retourne la liste inchangée si non trouvé
     });
 
     // Envoyer à Supabase
     try {
       await _supabase.from('novels').update(novelData).eq('id', updatedNovel.id);
-      debugPrint("[NovelsProvider] Roman ${updatedNovel.id} mis à jour avec succès.");
+      AppLogger.info("Roman ${updatedNovel.id} mis à jour avec succès.", tag: "NovelsProvider");
     } catch (e) {
-      debugPrint("[NovelsProvider] Erreur lors de la mise à jour du roman ${updatedNovel.id}: $e. Réversion et rechargement...");
+      AppLogger.error("Erreur lors de la mise à jour du roman ${updatedNovel.id}", error: e, tag: "NovelsProvider");
       ref.invalidateSelf();
       throw Exception("Erreur Supabase lors de la mise à jour: $e");
     }
@@ -320,11 +334,13 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
          final originalNovel = currentNovels[novelIndex];
          // Utilise la méthode helper du modèle pour créer une nouvelle instance
          final updatedNovel = originalNovel.novelWithAddedChapter(newChapter);
+         // ✅ Forcer le tri des chapitres DANS la nouvelle instance
+         updatedNovel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
          updatedNovelState = updatedNovel; // Sauvegarde pour la màj Supabase de updated_at
 
          final newList = List<Novel>.from(currentNovels);
          newList[novelIndex] = updatedNovel;
-         return _sortNovels(newList, ref.read(sortOptionProvider)); // Re-trier
+         return _sortNovels(newList, ref.read(sortOptionProvider)); // Re-trier les romans
        }
        return currentNovels;
     });
@@ -337,14 +353,14 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
           await _supabase.from('novels')
               .update({'updated_at': updatedNovelState!.updatedAt.toIso8601String()})
               .eq('id', novelId);
-          debugPrint("[NovelsProvider] Chapitre ${newChapter.id} ajouté au roman ${novelId}.");
+          AppLogger.info("Chapitre ${newChapter.id} ajouté au roman ${novelId}.", tag: "NovelsProvider");
         } catch (e) {
-           debugPrint("[NovelsProvider] Erreur lors de l'ajout du chapitre ${newChapter.id}: $e. Réversion et rechargement...");
+           AppLogger.error("Erreur lors de l'ajout du chapitre ${newChapter.id}", error: e, tag: "NovelsProvider");
            ref.invalidateSelf();
            throw Exception("Erreur Supabase lors de l'ajout du chapitre: $e");
         }
     } else {
-       debugPrint("[NovelsProvider] Erreur addChapter: Roman $novelId non trouvé dans l'état local.");
+       AppLogger.error("Erreur addChapter: Roman $novelId non trouvé dans l'état local.", tag: "NovelsProvider");
        ref.invalidateSelf(); // Recharge au cas où
        throw Exception("Roman non trouvé pour ajouter le chapitre.");
     }
@@ -364,11 +380,13 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         final originalNovel = currentNovels[novelIndex];
         // Utilise la méthode helper du modèle
         final updatedNovel = originalNovel.novelWithUpdatedChapter(updatedChapter);
+        // ✅ Forcer le tri des chapitres DANS la nouvelle instance
+        updatedNovel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         updatedNovelState = updatedNovel;
 
         final newList = List<Novel>.from(currentNovels);
         newList[novelIndex] = updatedNovel;
-        return _sortNovels(newList, ref.read(sortOptionProvider));
+        return _sortNovels(newList, ref.read(sortOptionProvider)); // Re-trier les romans
       }
       return currentNovels;
     });
@@ -376,21 +394,26 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     // Envoyer à Supabase
      if (updatedNovelState != null) {
         try {
+          // Ne pas envoyer novel_id et created_at dans l'update du chapitre
+          final updateData = updatedChapter.toJson()
+            ..remove('novel_id')
+            ..remove('created_at'); // Ne pas modifier la date de création originale
+
           await _supabase.from('chapters')
-              .update(updatedChapter.toJson()..remove('novel_id')) // Ne pas envoyer novel_id dans l'update
+              .update(updateData)
               .eq('id', updatedChapter.id);
           // Mettre à jour 'updated_at' du roman
           await _supabase.from('novels')
               .update({'updated_at': updatedNovelState!.updatedAt.toIso8601String()})
               .eq('id', novelId);
-          debugPrint("[NovelsProvider] Chapitre ${updatedChapter.id} mis à jour.");
+          AppLogger.info("Chapitre ${updatedChapter.id} mis à jour.", tag: "NovelsProvider");
         } catch (e) {
-           debugPrint("[NovelsProvider] Erreur màj chapitre ${updatedChapter.id}: $e. Rechargement...");
+           AppLogger.error("Erreur màj chapitre ${updatedChapter.id}", error: e, tag: "NovelsProvider");
            ref.invalidateSelf();
            throw Exception("Erreur Supabase màj chapitre: $e");
         }
      } else {
-        debugPrint("[NovelsProvider] Erreur updateChapter: Roman $novelId non trouvé.");
+        AppLogger.error("Erreur updateChapter: Roman $novelId non trouvé.", tag: "NovelsProvider");
         ref.invalidateSelf();
         throw Exception("Roman non trouvé pour màj chapitre.");
      }
@@ -410,16 +433,16 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
          final originalNovel = currentNovels[novelIndex];
          // Vérifie si le chapitre existe avant de tenter la suppression locale
          if (!originalNovel.chapters.any((c) => c.id == chapterId)) {
-            debugPrint("[NovelsProvider] Chapitre $chapterId non trouvé dans ${novelId} pour suppression locale.");
+            AppLogger.warning("Chapitre $chapterId non trouvé dans ${novelId} pour suppression locale.", tag: "NovelsProvider");
             return currentNovels; // Retourne sans changement
          }
          final updatedNovel = originalNovel.novelWithRemovedChapter(chapterId);
+         // ✅ Le tri n'est pas nécessaire ici car on supprime juste
          updatedNovelState = updatedNovel;
 
          final newList = List<Novel>.from(currentNovels);
          newList[novelIndex] = updatedNovel;
-         // Le tri ne devrait pas changer, mais on le garde pour la cohérence
-         return _sortNovels(newList, ref.read(sortOptionProvider));
+         return _sortNovels(newList, ref.read(sortOptionProvider)); // Re-trier les romans
       }
       return currentNovels;
     });
@@ -432,23 +455,19 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         await _supabase.from('novels')
             .update({'updated_at': updatedNovelState!.updatedAt.toIso8601String()})
             .eq('id', novelId);
-        debugPrint("[NovelsProvider] Chapitre $chapterId supprimé du roman ${novelId}.");
+        AppLogger.info("Chapitre $chapterId supprimé du roman ${novelId}.", tag: "NovelsProvider");
       } catch (e) {
-         debugPrint("[NovelsProvider] Erreur suppression chapitre $chapterId: $e. Rechargement...");
+         AppLogger.error("Erreur suppression chapitre $chapterId", error: e, tag: "NovelsProvider");
          ref.invalidateSelf();
          throw Exception("Erreur Supabase suppression chapitre: $e");
       }
     } else {
-      // Si updatedNovelState est null, soit le roman n'a pas été trouvé,
-      // soit le chapitre n'était déjà plus dans la liste locale.
-      // On tente quand même la suppression BDD au cas où l'état local serait désynchronisé.
-      debugPrint("[NovelsProvider] Tentative de suppression BDD chapitre $chapterId (non trouvé localement ou roman manquant).");
+      AppLogger.warning("Tentative suppression BDD chapitre $chapterId (non trouvé localement ou roman manquant).", tag: "NovelsProvider");
        try {
            await _supabase.from('chapters').delete().eq('id', chapterId);
-           // On ne met pas à jour updated_at du roman car on n'est pas sûr de son état
            ref.invalidateSelf(); // Force un rechargement pour être sûr
        } catch (e) {
-            debugPrint("[NovelsProvider] Erreur suppression BDD chapitre $chapterId: $e.");
+            AppLogger.error("Erreur suppression BDD chapitre $chapterId", error: e, tag: "NovelsProvider");
             ref.invalidateSelf();
             throw Exception("Erreur Supabase suppression chapitre: $e");
        }
@@ -470,9 +489,9 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     // Envoyer à Supabase (la suppression cascade via FOREIGN KEY s'occupera des chapitres)
     try {
       await _supabase.from('novels').delete().eq('id', novelId);
-      debugPrint("[NovelsProvider] Roman $novelId supprimé.");
+      AppLogger.info("Roman $novelId supprimé.", tag: "NovelsProvider");
     } catch (e) {
-      debugPrint("[NovelsProvider] Erreur suppression roman $novelId: $e. Rechargement...");
+      AppLogger.error("Erreur suppression roman $novelId", error: e, tag: "NovelsProvider");
       ref.invalidateSelf();
       throw Exception("Erreur Supabase suppression roman: $e");
     }
@@ -480,16 +499,12 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
 
   // Rafraîchir manuellement la liste
   Future<void> refresh() async {
-    debugPrint("[NovelsProvider] Rafraîchissement manuel demandé.");
+    AppLogger.info("Rafraîchissement manuel demandé.", tag: "NovelsProvider");
     // Invalider le provider force la méthode build() à s'exécuter à nouveau
     ref.invalidateSelf();
-    // Attendre que la nouvelle valeur soit disponible (optionnel)
-    // await future;
   }
 } // Fin NovelsNotifier
 
 
 // --- Providers pour les amis (dépendent du controller) ---
 // (Déplacés dans friends_controller.dart pour la clarté)
-// final friendsListProvider = FutureProvider<List<Friendship>>((ref) async { ... });
-// final pendingFriendRequestsProvider = FutureProvider<List<Friendship>>((ref) async { ... });
