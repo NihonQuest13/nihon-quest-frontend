@@ -1,11 +1,11 @@
 // lib/controllers/sharing_controller.dart
+import 'dart:async'; // ✅ AJOUT: Importer dart:async pour Future.microtask
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers.dart'; // Pour authStateProvider, etc.
 import '../models.dart';
-// ✅ CORRECTION: Import inutilisé supprimé
-// import 'friends_controller.dart'; // Pour friendsListProvider
+// import 'friends_controller.dart'; // Import inutilisé
 
 // Provider pour ce controller
 final sharingControllerProvider = Provider((ref) => SharingController(ref));
@@ -60,8 +60,7 @@ class SharingController {
       final profilesData = await _supabase
           .from('profiles')
           .select('id, email, first_name, last_name') // Champs nécessaires
-          // ✅ CORRECTION: .in_ remplacé par .inFilter
-          .inFilter('id', collaboratorIds);
+          .inFilter('id', collaboratorIds); // Utilise inFilter
 
       // Map pour accès rapide par ID
       final profileMap = {
@@ -82,7 +81,6 @@ class SharingController {
           ));
         } else {
            debugPrint("[SharingController] Profil manquant pour collaborateur ID: $collabId");
-           // Optionnel: Ajouter une entrée avec email/ID si profil manquant ?
            collaboratorsInfo.add(CollaboratorInfo(
              userId: collabId,
              displayName: "Utilisateur inconnu ($collabId)", // Afficher l'ID
@@ -110,12 +108,6 @@ class SharingController {
 
     debugPrint("[SharingController] Tentative de partage du novel $novelId avec l'ami $friendUserId.");
 
-    // Optionnel: Re-vérifier si c'est bien un ami (déjà fait dans l'UI via la liste)
-    // final friends = await _ref.read(friendsListProvider.future);
-    // if (!friends.any((f) => f.friendProfile.id == friendUserId)) {
-    //     throw Exception("Cet utilisateur n'est pas dans votre liste d'amis acceptés.");
-    // }
-
     try {
       // Insère ou met à jour (si déjà partagé, ne fait rien grâce à onConflict)
       await _supabase.from('novel_collaborators').upsert({
@@ -125,15 +117,29 @@ class SharingController {
       }, onConflict: 'novel_id, collaborator_id'); // La clé primaire composite
 
       debugPrint("[SharingController] Roman $novelId partagé avec succès avec $friendUserId.");
-      // Invalider le cache spécifique pour ce roman pour rafraîchir la liste dans le dialogue
-      _ref.invalidate(novelCollaboratorsProvider(novelId));
+
+      // ✅ CORRECTION: Utiliser Future.microtask pour retarder l'invalidation
+      // Cela exécute l'invalidation juste après la fin de la frame actuelle,
+      // laissant le temps à l'opération en cours de se terminer proprement.
+      Future.microtask(() {
+        _ref.invalidate(novelCollaboratorsProvider(novelId));
+        debugPrint("[SharingController] Invalidation de novelCollaboratorsProvider($novelId) programmée.");
+      });
+
 
     } on PostgrestException catch (e) {
        debugPrint("[SharingController] Erreur Postgrest shareWithFriend: ${e.message} (code: ${e.code})");
+       // ✅ CORRECTION: Relancer l'erreur pour que l'UI puisse l'attraper
        throw Exception("Erreur base de données lors du partage: ${e.message}");
     } catch (e) {
+      // ✅ CORRECTION: Transformer l'erreur en Exception pour une meilleure gestion dans l'UI
       debugPrint("[SharingController] Erreur inconnue shareWithFriend: $e");
-      throw Exception("Une erreur inconnue est survenue lors du partage.");
+      // Si l'erreur est déjà une Exception, la relancer, sinon en créer une nouvelle.
+      if (e is Exception) {
+        rethrow;
+      } else {
+        throw Exception("Une erreur inconnue est survenue lors du partage: ${e.toString()}");
+      }
     }
   }
 
@@ -145,23 +151,34 @@ class SharingController {
 
     try {
       // Supprime l'entrée correspondante
-      // La politique RLS garantit que seul le propriétaire (ou admin) peut le faire
       await _supabase
           .from('novel_collaborators')
           .delete()
           .match({'novel_id': novelId, 'collaborator_id': collaboratorId});
 
       debugPrint("[SharingController] Accès révoqué pour $collaboratorId au novel $novelId.");
-      // Invalider le cache pour rafraîchir la liste dans le dialogue
-      _ref.invalidate(novelCollaboratorsProvider(novelId));
-      // Optionnel: Invalider novelsProvider pour l'utilisateur révoqué (complexe)
+
+      // ✅ CORRECTION: Utiliser Future.microtask ici aussi par cohérence
+      Future.microtask(() {
+         _ref.invalidate(novelCollaboratorsProvider(novelId));
+         debugPrint("[SharingController] Invalidation de novelCollaboratorsProvider($novelId) programmée après révocation.");
+         // Optionnel : Invalider aussi la liste des romans pour l'utilisateur révoqué ?
+         // Cela nécessiterait de connaître son Ref ou d'utiliser une autre approche.
+         // Pour l'instant, l'utilisateur révoqué verra le roman disparaître au prochain rechargement.
+         _ref.invalidate(novelsProvider); // Force le rafraichissement de la liste principale
+      });
+
 
     } on PostgrestException catch (e) {
        debugPrint("[SharingController] Erreur Postgrest revokeReaderAccess: ${e.message} (code: ${e.code})");
        throw Exception("Erreur base de données lors de la révocation: ${e.message}");
     } catch (e) {
       debugPrint("[SharingController] Erreur inconnue revokeReaderAccess: $e");
-      throw Exception("Erreur inconnue lors de la révocation de l'accès.");
+       if (e is Exception) {
+        rethrow;
+      } else {
+        throw Exception("Erreur inconnue lors de la révocation de l'accès: ${e.toString()}");
+      }
     }
   }
 
@@ -200,14 +217,22 @@ class SharingController {
       }, onConflict: 'novel_id, collaborator_id');
 
       debugPrint("[SharingController] Invitation par email réussie pour $cleanedEmail.");
-      _ref.invalidate(novelCollaboratorsProvider(novelId));
+      // ✅ CORRECTION: Utiliser Future.microtask
+       Future.microtask(() {
+         _ref.invalidate(novelCollaboratorsProvider(novelId));
+         debugPrint("[SharingController] Invalidation de novelCollaboratorsProvider($novelId) programmée après invitation email.");
+      });
 
     } on PostgrestException catch (e) {
        debugPrint("[SharingController] Erreur Postgrest inviteReaderByEmail: ${e.message} (code: ${e.code})");
        throw Exception("Erreur base de données lors de l'invitation: ${e.message}");
     } catch (e) {
       debugPrint("[SharingController] Erreur inconnue inviteReaderByEmail: $e");
-      throw Exception("Erreur inconnue lors de l'invitation.");
+       if (e is Exception) {
+        rethrow;
+      } else {
+        throw Exception("Erreur inconnue lors de l'invitation: ${e.toString()}");
+      }
     }
   }
 

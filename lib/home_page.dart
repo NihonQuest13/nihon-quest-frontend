@@ -25,6 +25,7 @@ import 'widgets/streaming_text_widget.dart'; // Pour le dialogue de création
 import 'widgets/cached_cover_image.dart'; // Pour les couvertures
 import 'widgets/optimized_common_widgets.dart'; // Pour ConfirmDialog, LoadingWidget, etc.
 import 'friends_page.dart'; // Page de gestion des amis
+import 'utils/app_logger.dart'; // ✅ AJOUT: Pour le log de débogage
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -61,7 +62,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     // Écoute les changements de statut du serveur pour déclencher des actions
     ref.listen<ServerStatus>(serverStatusProvider, (previous, next) async {
       if (next == ServerStatus.connected) {
-        debugPrint("[HomePage Listener] Serveur connecté. Lancement de la synchronisation de démarrage et traitement file.");
+        AppLogger.info("Serveur connecté. Lancement synchro démarrage.", tag: "HomePageListener");
         // Lance la synchronisation des romans au démarrage si le serveur est connecté
         await ref.read(startupServiceProvider).synchronizeOnStartup();
         // Tente de traiter la file de synchronisation (si elle n'est pas vide)
@@ -88,9 +89,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         leadingWidth: 120, // Largeur pour les icônes de statut/synchro
         leading: _buildLeadingActions(serverStatus), // Construit les actions de gauche
         actions: _buildAppBarActions(isDarkMode, pendingRequestsCount), // Construit les actions de droite
-        // Optionnel: Style pour l'AppBar (peut être défini dans AppTheme)
-        // backgroundColor: theme.appBarTheme.backgroundColor,
-        // elevation: theme.appBarTheme.elevation,
       ),
       // Corps principal de la page
       body: novelsAsyncValue.when(
@@ -108,12 +106,17 @@ class _HomePageState extends ConsumerState<HomePage> {
                 const SizedBox(height: 16),
                 Text('Erreur de chargement:', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                Text('$err', textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+                SelectableText('Détails: $err\n$stack', // Afficher stacktrace en debug?
+                   textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
                  const SizedBox(height: 24),
                  ElevatedButton.icon(
                    icon: const Icon(Icons.refresh),
                    label: const Text('Rafraîchir'),
-                   onPressed: () => ref.invalidate(novelsProvider), // Invalide le provider pour retenter le fetch
+                   onPressed: () {
+                     ref.invalidate(novelsProvider);
+                     ref.invalidate(friendsListProvider);
+                     ref.invalidate(pendingFriendRequestsProvider);
+                   }
                  ),
               ],
             ),
@@ -130,8 +133,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             // Permet de rafraîchir en tirant vers le bas
             onRefresh: () async {
                 ref.invalidate(novelsProvider); // Recharge les romans
-                ref.invalidate(friendsListProvider); // Recharge les amis
-                ref.invalidate(pendingFriendRequestsProvider); // Recharge les demandes
+                // Invalider les providers autoDispose forcera leur rechargement
+                ref.invalidate(friendsListProvider);
+                ref.invalidate(pendingFriendRequestsProvider);
             },
             child: GridView.builder(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Espace autour de la grille
@@ -283,7 +287,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       // Retourne vrai si 'is_admin' est vrai, sinon faux
       return response?['is_admin'] == true;
     } catch (e) {
-      debugPrint('Erreur vérification admin: $e');
+      AppLogger.error('Erreur vérification admin', error: e, tag: "HomePage");
       return false; // En cas d'erreur, suppose non admin
     }
   }
@@ -321,12 +325,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         icon: Icons.library_books_outlined,
         title: 'Votre bibliothèque est vide.',
         subtitle: 'Appuyez sur le bouton + pour commencer une nouvelle histoire.',
-        // Optionnel: Ajouter un bouton d'action ici si désiré
-        // action: ElevatedButton.icon(
-        //   icon: const Icon(Icons.add),
-        //   label: const Text('Créer un roman'),
-        //   onPressed: _navigateToCreateNovel,
-        // ),
     );
   }
 
@@ -362,19 +360,14 @@ class _HomePageState extends ConsumerState<HomePage> {
   // Navigue vers la page de création de roman
   Future<void> _navigateToCreateNovel() async {
     // Navigue et attend un résultat potentiel (le Novel créé)
-    // Bien que la création se fasse maintenant via un dialogue, on garde la structure
     await Navigator.push<Novel?>(
       context,
       MaterialPageRoute(builder: (context) => const create.CreateNovelPage()),
     );
-    // Après le retour de CreateNovelPage (même si annulé), on rafraîchit la liste
-    // pour s'assurer que l'UI est à jour (au cas où la création aurait réussi
-    // mais la navigation retour aurait été rapide).
+    // Après le retour de CreateNovelPage, invalide le provider pour rafraîchir
     if (mounted) {
        ref.invalidate(novelsProvider);
     }
-    // L'ancienne logique _handleNovelCreation et _showStreamingDialog n'est plus ici,
-    // elle est gérée entièrement dans CreateNovelPage.
   }
 
   // Affiche le dialogue d'aide/informations
@@ -593,7 +586,6 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                  title: const Text('Détails du roman'),
                  onTap: () {
                     Navigator.pop(sheetContext); // Ferme le bottom sheet
-                    // TODO: Implémenter une fonction/dialogue pour afficher les détails complets
                     _showNovelDetailsDialog(currentContext, widget.novel); // Appel de la fonction helper
                  },
               ),
@@ -611,7 +603,7 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                       currentContext,
                       MaterialPageRoute(builder: (context) => EditNovelPage(novel: widget.novel)),
                     );
-                    // Pas besoin de refresh ici, la page d'accueil le fera au retour si nécessaire
+                    // L'invalidation du novelsProvider rafraîchira si nécessaire
                   },
                 ),
                 ListTile(
@@ -650,7 +642,6 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                   title: Text('Supprimer le roman entier', style: TextStyle(color: Colors.red.shade700)),
                   onTap: () async {
                     // Appelle la fonction de confirmation et suppression
-                    // Gère la fermeture du sheet à l'intérieur
                     await _confirmAndDeleteNovel(sheetContext, widget.novel.title, widget.novel.id);
                   },
                 ),
@@ -682,7 +673,6 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Fonctionnalité de couverture à venir !"), backgroundColor: Colors.blueAccent),
       );
-      // TODO: Implémenter la logique d'upload/sélection d'image et mise à jour Supabase
   }
 
   // Placeholder pour la suppression de couverture
@@ -691,53 +681,58 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Fonctionnalité de couverture à venir !"), backgroundColor: Colors.blueAccent),
       );
-      // TODO: Implémenter la logique de suppression du fichier dans Supabase Storage et màj BDD
   }
 
   // Dialogue de confirmation avant suppression du roman
    Future<void> _confirmAndDeleteNovel(BuildContext sheetContext, String novelTitle, String novelId) async {
-      final currentNavContext = Navigator.of(sheetContext); // Capture navigator before async
-      final currentScaffoldMessenger = ScaffoldMessenger.of(context); // Capture scaffold messenger
-      final currentRef = ref; // Capture ref
+      // Capture les contextes nécessaires avant l'await
+      final currentNavContext = Navigator.of(sheetContext);
+      final parentScaffoldMessenger = ScaffoldMessenger.of(context);
+      final currentRef = ref;
 
-      // Ferme le bottom sheet d'abord
+      // Ferme le bottom sheet
       currentNavContext.pop();
 
+      // Affiche le dialogue de confirmation en utilisant le contexte parent
       final bool? confirmDelete = await ConfirmDialog.show(
-        context, // Utilise le contexte principal pour afficher par-dessus
+        context,
         title: 'Confirmer la suppression',
         content: 'Voulez-vous vraiment supprimer le roman "$novelTitle" et tous ses chapitres ? Cette action est irréversible.',
         confirmLabel: 'Supprimer',
         isDangerous: true,
       );
 
-      // Vérifie si le widget est toujours monté APRÈS l'attente du dialogue
+      // Vérifie si la suppression est confirmée ET si le widget est toujours monté
       if (confirmDelete != true || !mounted) return;
 
       try {
-        // Ajoute la tâche de suppression au service de synchronisation (pour le backend local si utilisé)
+        // Ajoute la tâche de suppression pour le backend local
         final syncTask = SyncTask(action: 'delete_novel', novelId: novelId);
         await currentRef.read(syncServiceProvider).addTask(syncTask);
-        // Supprime le roman de l'état local et de Supabase via le notifier
+        // Supprime de Supabase et de l'état local
         await currentRef.read(novelsProvider.notifier).deleteNovel(novelId);
 
-        currentScaffoldMessenger.showSnackBar(
-           SnackBar(content: Text('Roman "$novelTitle" supprimé.'), backgroundColor: Colors.green)
-        );
-      } catch (e) {
-        debugPrint("Erreur suppression roman: $e");
-        // Vérifie à nouveau le montage avant d'afficher le snackbar d'erreur
+        // Affiche la confirmation (si toujours monté)
         if (mounted) {
-           currentScaffoldMessenger.showSnackBar(
+          parentScaffoldMessenger.showSnackBar(
+             SnackBar(content: Text('Roman "$novelTitle" supprimé.'), backgroundColor: Colors.green)
+          );
+        }
+      } catch (e) {
+        AppLogger.error("Erreur suppression roman", error: e, tag: "HomePage");
+        // Affiche l'erreur (si toujours monté)
+        if (mounted) {
+           parentScaffoldMessenger.showSnackBar(
              SnackBar(content: Text('Erreur lors de la suppression: ${e.toString()}'), backgroundColor: Colors.redAccent)
            );
         }
       }
    }
 
-   // ⭐ NOUVEAU : Dialogue de confirmation avant de quitter un roman partagé
+   // Dialogue de confirmation avant de quitter un roman partagé
    Future<void> _confirmAndLeaveSharedNovel(BuildContext parentContext, String novelId, String novelTitle) async {
        final currentUserId = _currentUserId;
+       // Vérifie l'ID et si le widget est monté
        if (currentUserId == null || !parentContext.mounted) return;
 
        final confirm = await ConfirmDialog.show(
@@ -750,14 +745,19 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
 
        if (confirm == true && parentContext.mounted) {
           try {
-             // Appelle directement la révocation sur soi-même
+             // Appelle la révocation sur soi-même
              await ref.read(sharingControllerProvider).revokeReaderAccess(novelId, currentUserId);
-              ScaffoldMessenger.of(parentContext).showSnackBar(
-               SnackBar(content: Text("Vous avez quitté le roman \"$novelTitle\"."), backgroundColor: Colors.orange)
-             );
-             // Rafraîchir la liste des romans pour qu'il disparaisse
-             ref.invalidate(novelsProvider);
+              // Affiche confirmation (si toujours monté)
+             if (parentContext.mounted) {
+                ScaffoldMessenger.of(parentContext).showSnackBar(
+                  SnackBar(content: Text("Vous avez quitté le roman \"$novelTitle\"."), backgroundColor: Colors.orange)
+                );
+             }
+             // Rafraîchir la liste des romans pour qu'il disparaisse (déjà fait par revokeReaderAccess)
+             // ref.invalidate(novelsProvider);
           } catch (e) {
+             AppLogger.error("Erreur en quittant le roman partagé", error: e, tag: "HomePage");
+             // Affiche erreur (si toujours monté)
              if (parentContext.mounted) {
                ScaffoldMessenger.of(parentContext).showSnackBar(
                  SnackBar(content: Text("Erreur: ${e.toString()}"), backgroundColor: Colors.redAccent)
@@ -768,7 +768,7 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
    }
 
 
-   // ⭐ NOUVEAU : Dialogue pour afficher les détails du roman (simplifié)
+   // Dialogue pour afficher les détails du roman (simplifié)
     void _showNovelDetailsDialog(BuildContext context, Novel novel) {
     final theme = Theme.of(context);
     showDialog(
@@ -802,215 +802,239 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
   }
 
 
-   // --- Dialogue de Partage (utilise maintenant la liste d'amis) ---
+   // Dialogue de Partage
    void _showShareDialog(BuildContext parentContext, String novelId, String novelTitle) {
+    // Lire les controllers une seule fois
     final sharingController = ref.read(sharingControllerProvider);
-    // ⭐ Récupère l'état actuel du provider des amis (peut être en chargement, erreur, ou data)
+    final friendsController = ref.read(friendsControllerProvider); // Pour vérifier si on appelle la bonne fonction
+
+    // Utiliser watch pour réagir aux changements
     final friendsAsync = ref.watch(friendsListProvider);
-    // Provider pour la liste des collaborateurs actuels de CE roman
     final collaboratorsAsync = ref.watch(novelCollaboratorsProvider(novelId));
 
-    String? selectedFriendId; // ID de l'ami sélectionné dans la dropdown
-    bool isSharingLoading = false; // Pour le bouton "Partager"
-    bool isRevokingLoading = false; // Pour les boutons "Révoquer"
+    String? selectedFriendId;
+    bool isSharingLoading = false;
+    Map<String, bool> isRevokingLoadingMap = {};
 
     showDialog(
       context: parentContext,
-      // barrierDismissible: !(isSharingLoading || isRevokingLoading), // Empêche de fermer pendant chargement
       builder: (BuildContext dialogContext) {
-        return StatefulBuilder( // Nécessaire pour gérer isLoading et selectedFriendId
+        return StatefulBuilder(
           builder: (context, setStateDialog) {
-            final isLoading = isSharingLoading || isRevokingLoading; // État de chargement global du dialogue
+            final isLoadingOverall = isSharingLoading || isRevokingLoadingMap.containsValue(true);
 
             return AlertDialog(
               title: Text('Partager "$novelTitle"'),
-              scrollable: true, // Permet au contenu de défiler
               content: SizedBox(
-                width: double.maxFinite, // Utilise la largeur max disponible
-                child: Column(
-                  mainAxisSize: MainAxisSize.min, // Prend la hauteur minimale nécessaire
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Partager avec un ami :", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Partager avec un ami :", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
 
-                    // --- Section Sélection Ami ---
-                    friendsAsync.when(
-                       loading: () => const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 20.0), child: Text("Chargement amis...", style: TextStyle(fontStyle: FontStyle.italic)))),
-                       error: (err, stack) => Text("Erreur chargement amis: $err", style: const TextStyle(color: Colors.red)),
-                       data: (friends) {
-                         if (friends.isEmpty) {
-                           return Column( // Message + lien vers page amis
-                             children: [
-                               const Text("Vous n'avez aucun ami à inviter.", style: TextStyle(fontStyle: FontStyle.italic)),
-                               TextButton(
-                                 child: const Text("Ajouter des amis ?"),
-                                 onPressed: (){
-                                      Navigator.pop(dialogContext); // Ferme dialogue partage
-                                      Navigator.push(parentContext, MaterialPageRoute(builder: (_) => const FriendsPage())); // Ouvre page amis
-                                 },
-                               )
-                             ],
-                           );
-                         }
+                      // --- Section Sélection Ami ---
+                      Consumer(builder: (context, ref, _) {
+                        final currentFriendsAsync = ref.watch(friendsListProvider);
+                        final currentCollaboratorsAsync = ref.watch(novelCollaboratorsProvider(novelId));
 
-                         // Filtrer les amis déjà collaborateurs (optionnel, upsert gère les doublons)
-                          final currentCollaboratorIds = collaboratorsAsync.valueOrNull?.map((c) => c.userId).toSet() ?? {};
-                          final availableFriends = friends.where((f) => !currentCollaboratorIds.contains(f.friendProfile.id)).toList();
+                        return currentFriendsAsync.when(
+                           loading: () => const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 20.0), child: Text("Chargement amis...", style: TextStyle(fontStyle: FontStyle.italic)))),
+                           error: (err, stack) => Text("Erreur chargement amis: $err", style: const TextStyle(color: Colors.red)),
+                           data: (friends) {
+                             if (friends.isEmpty) {
+                               return Column(
+                                 children: [
+                                   const Text("Vous n'avez aucun ami à inviter.", style: TextStyle(fontStyle: FontStyle.italic)),
+                                   TextButton(
+                                     child: const Text("Ajouter des amis ?"),
+                                     onPressed: isLoadingOverall ? null : (){
+                                          Navigator.pop(dialogContext);
+                                          Navigator.push(parentContext, MaterialPageRoute(builder: (_) => const FriendsPage()));
+                                     },
+                                   )
+                                 ],
+                               );
+                             }
 
-                         if(availableFriends.isEmpty && friends.isNotEmpty) {
-                             return const Text("Tous vos amis ont déjà accès.", style: TextStyle(fontStyle: FontStyle.italic));
-                         }
+                             // Filtrer les amis déjà collaborateurs
+                              final currentCollaboratorIds = currentCollaboratorsAsync.valueOrNull?.map((c) => c.userId).toSet() ?? {};
+                              final availableFriends = friends.where((f) => !currentCollaboratorIds.contains(f.friendProfile.id)).toList();
 
-                         // Liste déroulante des amis disponibles
-                         return DropdownButtonFormField<String>(
-                           value: selectedFriendId,
-                           hint: const Text('Sélectionnez un ami'),
-                           isExpanded: true, // Prend toute la largeur
-                           items: availableFriends.map((friendship) {
-                             return DropdownMenuItem<String>(
-                               value: friendship.friendProfile.id,
-                               child: Text(
-                                  friendship.friendProfile.fullName.isNotEmpty
-                                      ? friendship.friendProfile.fullName
-                                      : friendship.friendProfile.email, // Affiche nom ou email
-                                  overflow: TextOverflow.ellipsis // Empêche le texte long de déborder
+                             if (availableFriends.isEmpty) {
+                                 return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                                  child: Text("Tous vos amis ont déjà accès.", style: TextStyle(fontStyle: FontStyle.italic)),
+                                );
+                             }
+
+                             // Liste déroulante
+                             return DropdownButtonFormField<String>(
+                               value: selectedFriendId,
+                               hint: const Text('Sélectionnez un ami'),
+                               isExpanded: true,
+                               items: availableFriends.map((friendship) {
+                                 return DropdownMenuItem<String>(
+                                   value: friendship.friendProfile.id,
+                                   child: Text(
+                                      friendship.friendProfile.fullName.isNotEmpty
+                                          ? friendship.friendProfile.fullName
+                                          : friendship.friendProfile.email,
+                                      overflow: TextOverflow.ellipsis
+                                   ),
+                                 );
+                               }).toList(),
+                               onChanged: isLoadingOverall ? null : (value) {
+                                 setStateDialog(() => selectedFriendId = value);
+                               },
+                               validator: (value) => value == null ? 'Choisissez un ami' : null,
+                               decoration: const InputDecoration(
+                                 prefixIcon: Icon(Icons.person_outline),
+                                 contentPadding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 10.0),
+                                 border: OutlineInputBorder(),
                                ),
                              );
-                           }).toList(),
-                           onChanged: isLoading ? null : (value) {
-                             setStateDialog(() => selectedFriendId = value);
-                           },
-                           validator: (value) => value == null ? 'Choisissez un ami' : null,
-                           decoration: const InputDecoration(
-                             prefixIcon: Icon(Icons.person_outline),
-                             contentPadding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 10.0),
-                             border: OutlineInputBorder(), // Style standard
-                           ),
-                         );
-                       }
-                    ),
-                    const SizedBox(height: 15),
-                    // Bouton Partager (centré)
-                    if (friendsAsync.hasValue && friendsAsync.value!.isNotEmpty) // Affiche seulement si des amis sont chargeables
-                       Center(
-                         child: ElevatedButton.icon(
-                           icon: isSharingLoading
-                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                               : const Icon(Icons.send_outlined, size: 18),
-                           label: Text(isSharingLoading ? 'Partage...' : 'Partager en lecture'),
-                           // Désactivé si chargement ou aucun ami sélectionné
-                           onPressed: (isLoading || selectedFriendId == null) ? null : () async {
-                             if (selectedFriendId != null) {
-                               setStateDialog(() => isSharingLoading = true);
-                               try {
-                                 await sharingController.shareWithFriend(novelId, selectedFriendId!);
-                                 // Trouve le nom de l'ami pour le message
-                                 final friendName = friendsAsync.value?.firstWhereOrNull((f) => f.friendProfile.id == selectedFriendId!)?.friendProfile.fullName ?? 'cet ami';
-                                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                                   SnackBar(content: Text("Roman partagé avec $friendName !"), backgroundColor: Colors.green)
-                                 );
-                                 // Réinitialise la sélection et rafraîchit la liste des collaborateurs
-                                 setStateDialog((){ selectedFriendId = null; });
-                                  ref.invalidate(novelCollaboratorsProvider(novelId)); // Force le rebuild du FutureBuilder
+                           }
+                        );
+                      }),
+                      const SizedBox(height: 15),
 
-                               } catch (e) {
-                                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                                   SnackBar(content: Text("Erreur partage: ${e.toString()}"), backgroundColor: Colors.redAccent)
-                                 );
-                               } finally {
-                                    // Vérifier si le dialogue est toujours monté
-                                    try {
-                                       if(Navigator.of(context).canPop()) { // Utilise le context du StatefulBuilder
+                      // Bouton Partager
+                      Consumer(builder: (context, ref, _) {
+                        final friendsExist = ref.watch(friendsListProvider).maybeWhen(data: (f) => f.isNotEmpty, orElse: () => false);
+                        return friendsExist
+                           ? Center(
+                             child: ElevatedButton.icon(
+                               icon: isSharingLoading
+                                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                   : const Icon(Icons.send_outlined, size: 18),
+                               label: Text(isSharingLoading ? 'Partage...' : 'Partager en lecture'),
+                               onPressed: (isLoadingOverall || selectedFriendId == null) ? null : () async {
+                                 if (selectedFriendId != null) {
+                                   setStateDialog(() => isSharingLoading = true);
+                                   try {
+                                     AppLogger.info("Appel de shareWithFriend pour $selectedFriendId", tag: "ShareDialog");
+                                     await sharingController.shareWithFriend(novelId, selectedFriendId!);
+                                     final friendName = ref.read(friendsListProvider).value?.firstWhereOrNull((f) => f.friendProfile.id == selectedFriendId!)?.friendProfile.fullName ?? 'cet ami';
+                                     if (parentContext.mounted) {
+                                        ScaffoldMessenger.of(parentContext).showSnackBar(
+                                          SnackBar(content: Text("Roman partagé avec $friendName !"), backgroundColor: Colors.green)
+                                        );
+                                     }
+                                     setStateDialog((){ selectedFriendId = null; });
+                                   } catch (e) {
+                                      AppLogger.error("Erreur partage", error: e, tag: "ShareDialog");
+                                      if (parentContext.mounted) {
+                                         ScaffoldMessenger.of(parentContext).showSnackBar(
+                                          SnackBar(content: Text("Erreur partage: ${e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString()}"), backgroundColor: Colors.redAccent)
+                                        );
+                                      }
+                                   } finally {
+                                       // Utiliser try-finally pour s'assurer que l'état de chargement est réinitialisé
+                                       if(mounted) { // Vérifier si le widget StatefulBuilder est toujours monté
                                             setStateDialog(() => isSharingLoading = false);
                                        }
-                                    } catch (e) { /* Gère l'erreur si le contexte n'est plus valide */ }
-                               }
-                             }
+                                   }
+                                 }
+                               },
+                             ),
+                           )
+                           : const SizedBox.shrink();
+                      }),
+                      const Divider(height: 30),
+
+                      // --- Section Collaborateurs Actuels ---
+                      const Text("Personnes ayant accès :", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      Consumer(builder: (context, ref, _) {
+                        final currentCollaboratorsAsync = ref.watch(novelCollaboratorsProvider(novelId));
+                        return currentCollaboratorsAsync.when(
+                           loading: () {
+                             AppLogger.info("Collaborators: Loading", tag: "ShareDialog");
+                             return const SizedBox(
+                                height: 50,
+                                child: Center(child: CircularProgressIndicator(strokeWidth: 2))
+                             );
                            },
-                         ),
-                       ),
-                    const Divider(height: 30),
-
-                    // --- Section Collaborateurs Actuels ---
-                    const Text("Personnes ayant accès :", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    // Affiche la liste des collaborateurs actuels
-                    collaboratorsAsync.when(
-                       loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(strokeWidth: 2))),
-                       error: (err, stack) => Text("Erreur chargement accès: $err", style: const TextStyle(color: Colors.red)),
-                       data: (collaborators) {
-                         if (collaborators.isEmpty) {
-                           return const Text("Personne n'a accès à ce roman (à part vous).", style: TextStyle(fontStyle: FontStyle.italic));
-                         }
-                         // Liste des personnes ayant accès
-                         return ConstrainedBox(
-                           constraints: const BoxConstraints(maxHeight: 150), // Limite la hauteur
-                           child: ListView.builder(
-                             shrinkWrap: true, // S'adapte à la hauteur du contenu
-                             itemCount: collaborators.length,
-                             itemBuilder: (context, index) {
-                               final collab = collaborators[index];
-                               return ListTile(
-                                 dense: true, // Rend la ligne moins haute
-                                 leading: const Icon(Icons.person_outline, size: 20),
-                                 title: Text(collab.displayName, style: const TextStyle(fontSize: 14)),
-                                 // Affiche le rôle (sera 'reader' pour l'instant)
-                                 // subtitle: Text("Rôle : ${collab.role}", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                                 trailing: IconButton(
-                                   icon: isRevokingLoading // Affiche indicateur si en cours de révocation pour CET utilisateur
-                                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                        : Icon(Icons.person_remove_outlined, color: Colors.redAccent.withOpacity(0.8), size: 22),
-                                   tooltip: 'Révoquer l\'accès',
-                                   // Désactivé pendant toute opération de chargement
-                                   onPressed: isLoading ? null : () async {
-                                       // Confirmation avant de révoquer
-                                       final confirm = await ConfirmDialog.show(
-                                           parentContext, // Contexte parent pour afficher par-dessus
-                                           title: "Révoquer l'accès ?",
-                                           content: "Voulez-vous retirer l'accès en lecture à ${collab.displayName} ?",
-                                           confirmLabel: "Révoquer",
-                                           isDangerous: true
-                                       );
-                                       if (confirm == true) {
-                                           setStateDialog(() => isRevokingLoading = true);
-                                           try {
-                                               await sharingController.revokeReaderAccess(novelId, collab.userId);
-                                                ScaffoldMessenger.of(parentContext).showSnackBar(
-                                                 SnackBar(content: Text("Accès de ${collab.displayName} révoqué."), backgroundColor: Colors.orange)
-                                               );
-                                               // Rafraîchit la liste des collaborateurs
-                                                ref.invalidate(novelCollaboratorsProvider(novelId));
-                                                // Potentiellement rafraîchir la liste d'amis disponibles si l'UI le nécessite
-                                                // setStateDialog((){}); // Déclenché par l'invalidation
-
-                                           } catch (e) {
-                                                ScaffoldMessenger.of(parentContext).showSnackBar(
-                                                 SnackBar(content: Text("Erreur révocation: ${e.toString()}"), backgroundColor: Colors.redAccent)
-                                               );
-                                           } finally {
-                                               try {
-                                                 if(Navigator.of(context).canPop()) { // Contexte du StatefulBuilder
-                                                    setStateDialog(() => isRevokingLoading = false);
-                                                 }
-                                               } catch(e) {}
-                                           }
-                                       }
-                                   },
-                                 ),
-                                 contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0), // Padding réduit
+                           error: (err, stack) {
+                             AppLogger.error("Collaborators: Error", error: err, stackTrace: stack, tag: "ShareDialog");
+                             return Text("Erreur chargement accès: $err", style: const TextStyle(color: Colors.red));
+                           },
+                           data: (collaborators) {
+                             AppLogger.info("Collaborators: Data loaded (${collaborators.length})", tag: "ShareDialog");
+                             if (collaborators.isEmpty) {
+                               return const Padding(
+                                 padding: EdgeInsets.symmetric(vertical: 8.0),
+                                 child: Text("Personne n'a accès (à part vous).", style: TextStyle(fontStyle: FontStyle.italic)),
                                );
-                             },
-                           ),
-                         );
-                       },
-                    ),
-                  ],
+                             }
+                             // Utilisation de Column
+                             return Column(
+                               mainAxisSize: MainAxisSize.min,
+                               children: collaborators.map((collab) {
+                                 final isRevokingThisOne = isRevokingLoadingMap[collab.userId] ?? false;
+                                 return ListTile(
+                                   dense: true,
+                                   leading: const Icon(Icons.person_outline, size: 20),
+                                   title: Text(collab.displayName, style: const TextStyle(fontSize: 14)),
+                                   trailing: IconButton(
+                                     icon: isRevokingThisOne
+                                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                          : Icon(Icons.person_remove_outlined, color: Colors.redAccent.withOpacity(0.8), size: 22),
+                                     tooltip: 'Révoquer l\'accès',
+                                     onPressed: (isLoadingOverall || isRevokingThisOne) ? null : () async {
+                                         final confirm = await ConfirmDialog.show(
+                                             parentContext,
+                                             title: "Révoquer l'accès ?",
+                                             content: "Voulez-vous retirer l'accès en lecture à ${collab.displayName} ?",
+                                             confirmLabel: "Révoquer",
+                                             isDangerous: true
+                                         );
+                                         if (confirm == true && mounted) {
+                                             setStateDialog(() => isRevokingLoadingMap[collab.userId] = true);
+                                             try {
+                                                 // ✅ VÉRIFICATION ET LOG: S'assurer qu'on appelle la bonne fonction
+                                                 AppLogger.info("Appel de revokeReaderAccess pour ${collab.userId}", tag: "ShareDialog");
+                                                 // await friendsController.removeOrRejectFriendship(collab.userId); // <- LIGNE INCORRECTE (exemple de ce qu'il ne faut PAS faire)
+                                                 await sharingController.revokeReaderAccess(novelId, collab.userId); // <- LIGNE CORRECTE
+
+                                                 if (parentContext.mounted) {
+                                                     ScaffoldMessenger.of(parentContext).showSnackBar(
+                                                       SnackBar(content: Text("Accès de ${collab.displayName} révoqué."), backgroundColor: Colors.orange)
+                                                     );
+                                                 }
+                                             } catch (e) {
+                                                 AppLogger.error("Erreur révocation", error: e, tag: "ShareDialog");
+                                                 if (parentContext.mounted) {
+                                                     ScaffoldMessenger.of(parentContext).showSnackBar(
+                                                       SnackBar(content: Text("Erreur révocation: ${e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString()}"), backgroundColor: Colors.redAccent)
+                                                     );
+                                                 }
+                                             } finally {
+                                                 // Utiliser try-finally pour garantir la réinitialisation de l'état
+                                                 if(mounted) { // Vérifier si StatefulBuilder est monté
+                                                     setStateDialog(() => isRevokingLoadingMap.remove(collab.userId));
+                                                 }
+                                             }
+                                         }
+                                     },
+                                   ),
+                                   contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                                 );
+                               }).toList(),
+                             );
+                           },
+                        );
+                      }), // Fin Consumer pour liste collaborateurs
+                    ],
+                  ),
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(),
+                  onPressed: isLoadingOverall ? null : () => Navigator.of(dialogContext).pop(),
                   child: const Text('Fermer'),
                 ),
               ],
@@ -1031,75 +1055,66 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
     final bool isOwner = widget.novel.user_id == _currentUserId; // Est-ce le propriétaire ?
 
     return MouseRegion(
-      // Change l'apparence au survol (pour web/desktop)
       onEnter: (_) => setState(() => _isHovering = true),
       onExit: (_) => setState(() => _isHovering = false),
-      cursor: SystemMouseCursors.click, // Curseur main au survol
+      cursor: SystemMouseCursors.click,
       child: AnimatedScale(
-        scale: _isHovering ? 1.03 : 1.0, // Léger agrandissement au survol
+        scale: _isHovering ? 1.03 : 1.0,
         duration: const Duration(milliseconds: 150),
         child: GestureDetector(
-          // Navigation vers le lecteur au clic simple
           onTap: () async {
              final vocabularyService = ref.read(vocabularyServiceProvider);
-             // Note: themeService est maintenant global via le provider
-             final currentNavContext = Navigator.of(context); // Capture navigator before async gap
-             final currentRef = ref; // Capture ref
+             // Utiliser l'instance globale themeService définie dans providers.dart
+             final themeServiceInstance = themeService;
+             final currentNavContext = Navigator.of(context);
+             final currentRef = ref;
 
              await currentNavContext.push<void>(
                MaterialPageRoute(
                  builder: (context) => NovelReaderPage(
                    novelId: widget.novel.id,
                    vocabularyService: vocabularyService,
-                   themeService: themeService, // Pass themeService instance
+                   themeService: themeServiceInstance, // Passer l'instance ThemeService
                  ),
                ),
              );
-             // Après le retour du lecteur, rafraîchit la liste des romans
-             // Vérifie si le widget est toujours monté
              if(mounted) {
                 currentRef.invalidate(novelsProvider);
              }
           },
-          // Affiche le menu contextuel à l'appui long
           onLongPress: _manageCover,
-          // ✅ CORRECTION: Utilisation de Column pour centrer verticalement
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.start, // Aligne en haut
-            crossAxisAlignment: CrossAxisAlignment.stretch, // Étire les enfants horizontalement
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // La couverture ou le placeholder
               Expanded(
                 child: Stack(
-                  fit: StackFit.expand, // Le Stack prend toute la place de l'Expanded
+                  fit: StackFit.expand,
                   children: [
-                    // Carte contenant l'image ou le placeholder
                     Card(
-                      elevation: _isHovering ? 6 : 3, // Ombre plus marquée au survol
+                      elevation: _isHovering ? 6 : 3,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      clipBehavior: Clip.antiAlias, // Pour arrondir l'image
+                      clipBehavior: Clip.antiAlias,
                       child: doesCoverExist
-                          // Affiche l'image en cache si elle existe
                           ? CachedCoverImage(imageUrl: coverPath!, fit: BoxFit.cover)
-                          // Sinon, affiche un placeholder avec icône et genre
                           : Container(
-                              color: theme.colorScheme.surfaceVariant.withOpacity(0.5), // Fond léger
+                              color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon( // Icône basée sur le genre
+                                  Icon(
                                       _getGenreIcon(widget.novel.genre),
-                                      size: 50, // Taille de l'icône
-                                      color: theme.colorScheme.primary.withOpacity(0.8) // Couleur thème
+                                      size: 50,
+                                      color: theme.colorScheme.primary.withOpacity(0.8)
                                   ),
                                   const SizedBox(height: 8),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                    child: Text( // Nom du genre
+                                    child: Text(
                                       widget.novel.genre,
                                       textAlign: TextAlign.center,
                                       style: theme.textTheme.labelSmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant, // Couleur texte secondaire
+                                        color: theme.colorScheme.onSurfaceVariant,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -1109,23 +1124,22 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                               ),
                             ),
                     ),
-                    // Icône "Partagé" si l'utilisateur n'est pas le propriétaire
                     if (!isOwner)
                       Positioned(
-                        top: 6, // Positionnement
+                        top: 6,
                         left: 6,
-                        child: Tooltip( // Ajout d'un tooltip
+                        child: Tooltip(
                           message: 'Partagé avec vous',
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.65), // Fond semi-transparent
-                              shape: BoxShape.circle, // Forme ronde
+                              color: Colors.black.withOpacity(0.65),
+                              shape: BoxShape.circle,
                             ),
                             child: const Icon(
-                              Icons.people_alt_outlined, // Icône de groupe
+                              Icons.people_alt_outlined,
                               color: Colors.white,
-                              size: 16, // Taille de l'icône
+                              size: 16,
                             ),
                           ),
                         ),
@@ -1133,34 +1147,30 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                   ],
                 ),
               ),
-              // ✅ CORRECTION: Utilisation de Column pour le titre et l'étagère
               Column(
-                mainAxisSize: MainAxisSize.min, // Prend la hauteur minimale
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Titre du roman sous la couverture
                   Padding(
-                    padding: const EdgeInsets.only(top: 6.0, left: 4.0, right: 4.0), // Espace au-dessus et sur les côtés
+                    padding: const EdgeInsets.only(top: 6.0, left: 4.0, right: 4.0),
                     child: Text(
                       widget.novel.title,
-                      textAlign: TextAlign.center, // Centré
-                      maxLines: 2, // Max 2 lignes
-                      overflow: TextOverflow.ellipsis, // Points de suspension si trop long
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500, // Semi-gras
-                          height: 1.2 // Interligne réduit
+                          fontWeight: FontWeight.w500,
+                          height: 1.2
                       ),
                     ),
                   ),
-                   // ✅ NOUVEAU: Effet étagère
                    Container(
-                     height: 3, // Hauteur de l'étagère
-                     width: 80, // Largeur de l'étagère (ajuster selon vos préférences)
-                     margin: const EdgeInsets.only(top: 4), // Espace entre titre et étagère
+                     height: 3,
+                     width: 80,
+                     margin: const EdgeInsets.only(top: 4),
                      decoration: BoxDecoration(
-                       // Couleur de l'étagère (légèrement plus sombre que le fond de la carte)
                        color: theme.cardTheme.color?.withOpacity(0.5) ?? theme.colorScheme.surfaceVariant.withOpacity(0.4),
-                       borderRadius: BorderRadius.circular(2), // Bords arrondis
-                       boxShadow: [ // Légère ombre pour donner du relief
+                       borderRadius: BorderRadius.circular(2),
+                       boxShadow: [
                          BoxShadow(
                             color: Colors.black.withOpacity(0.1),
                             blurRadius: 2,

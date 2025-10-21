@@ -9,15 +9,17 @@ import '../providers.dart'; // Pour authStateProvider
 final friendsControllerProvider = Provider((ref) => FriendsController(ref));
 
 // Provider pour la liste d'amis acceptés
-final friendsListProvider = FutureProvider<List<Friendship>>((ref) async {
-  // Se reconstruit si l'état d'authentification change
+// ✅ CORRECTION: Ajouter .autoDispose
+final friendsListProvider = FutureProvider.autoDispose<List<Friendship>>((ref) async {
+  // Se reconstruit si l'état d'authentification change ou si plus écouté
   ref.watch(authStateProvider);
   final controller = ref.watch(friendsControllerProvider);
   return controller.getFriends();
 });
 
 // Provider pour les demandes d'amis reçues en attente
-final pendingFriendRequestsProvider = FutureProvider<List<Friendship>>((ref) async {
+// ✅ CORRECTION: Ajouter .autoDispose (par cohérence)
+final pendingFriendRequestsProvider = FutureProvider.autoDispose<List<Friendship>>((ref) async {
   ref.watch(authStateProvider);
   final controller = ref.watch(friendsControllerProvider);
   return controller.getPendingIncomingRequests();
@@ -79,8 +81,7 @@ class FriendsController {
       final profilesData = await _supabase
           .from('profiles')
           .select('id, first_name, last_name, email') // Sélectionne les champs nécessaires
-          // ✅ CORRECTION: .in_ remplacé par .inFilter
-          .inFilter('id', friendIds.toList()); // Récupère tous les profils en une seule requête
+          .inFilter('id', friendIds.toList()); // Utilise inFilter
 
       // Créer une map pour un accès facile aux profils par leur ID
       final profileMap = {
@@ -219,7 +220,6 @@ class FriendsController {
     try {
       // Met à jour la ligne correspondante en 'accepted'
       // La politique RLS s'assure que seul le destinataire peut faire ça
-      // ✅ CORRECTION: Variable 'response' inutilisée supprimée
       await _supabase
           .from('friendships')
           .update({'status': 'accepted', 'updated_at': DateTime.now().toIso8601String()})
@@ -227,17 +227,8 @@ class FriendsController {
             'user_id_1': userId1,
             'user_id_2': userId2,
             'status': 'pending', // Condition supplémentaire de sécurité
-            // 'requester_id': friendId // Assure qu'on accepte une demande de l'autre
           })
          .neq('requester_id', currentUserId); // Double vérification qu'on n'est pas le demandeur
-
-      // Supabase ne renvoie pas d'erreur si aucune ligne ne correspond au 'match'.
-      // On pourrait vérifier si response.data (ou similaire selon la version du client)
-      // indique qu'une ligne a été affectée, mais l'invalidation suffit souvent.
-      // if (response == null || response.isEmpty) {
-      //   debugPrint("[FriendsController] Aucune demande en attente trouvée pour acceptation de $friendId.");
-      //   throw Exception("Demande non trouvée ou déjà traitée.");
-      // }
 
       debugPrint("[FriendsController] Demande de $friendId acceptée.");
       _invalidateFriendCaches();
