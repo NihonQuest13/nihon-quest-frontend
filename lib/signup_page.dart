@@ -1,8 +1,7 @@
-// lib/signup_page.dart (CORRIGÉ SELON LE SQL ET POUR UPDATE + IMPORTS)
+// lib/signup_page.dart (CORRIGÉ AVEC signUp data et SANS upsert)
 import 'package:flutter/material.dart';
-// ✅ CORRECTION: Import path corrigé et imports ajoutés
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'utils/app_logger.dart'; // Import pour AppLogger
+import 'utils/app_logger.dart'; // Assurez-vous que l'import est correct
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -12,12 +11,11 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  // Renommés pour correspondre au SQL (prénom = first_name, nom = last_name)
+  // ... (contrôleurs et variables d'état inchangés) ...
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _firstNameController = TextEditingController(); // Prénom
   final _lastNameController = TextEditingController();  // Nom
-
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
@@ -30,63 +28,82 @@ class _SignUpPageState extends State<SignUpPage> {
     super.dispose();
   }
 
-  // --- Fonction _signUp entièrement Corrigée ---
+  // --- Fonction _signUp avec data dans signUp ---
   Future<void> _signUp() async {
     if (!mounted) return;
 
-    // Valider le formulaire
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
       return;
     }
 
-    // Cacher le clavier
     FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
 
     try {
-      // 1. INSCRIPTION AUTH (Étape 1)
+      // 1. INSCRIPTION AUTH - ⭐ MODIFICATION: Passer les données ici
       final authResponse = await Supabase.instance.client.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
-      // Le trigger 'handle_new_user' s'exécute automatiquement ici
-
-      if (authResponse.user == null) {
-        throw const AuthException("Erreur lors de la création de l'utilisateur. L'email existe peut-être déjà.");
-      }
-      final userId = authResponse.user!.id;
-
-
-      // 2. MISE À JOUR PROFILES (Étape 2 - Modification: UPDATE au lieu d'INSERT)
-      await Supabase.instance.client
-          .from('profiles')
-          .update({
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+          // Passer first_name et last_name comme métadonnées utilisateur
+          data: {
             'first_name': _firstNameController.text.trim(),
             'last_name': _lastNameController.text.trim(),
-          })
-          .eq('id', userId);
+            // Vous pouvez ajouter d'autres métadonnées ici si nécessaire
+          });
 
+      // Le trigger 'handle_new_user' s'exécute automatiquement ici
+      // et (après modification SQL) insérera id, email, first_name, last_name.
 
-      // 3. SUCCÈS
-      if (mounted) {
+      if (authResponse.user == null) {
+        // Gérer le cas où l'utilisateur n'est pas retourné (confirmation requise, etc.)
+        if (mounted) {
+           // Si la confirmation est activée, signUp réussit mais user peut être null
+           // Vérifiez les paramètres de votre projet Supabase Auth
+           final requiresConfirmation = authResponse.session == null;
+           if (requiresConfirmation) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Inscription réussie ! Veuillez vérifier votre email pour confirmer votre compte."),
+                  backgroundColor: Colors.orangeAccent, // Couleur différente pour confirmation
+                ),
+              );
+              // Rediriger vers login quand même, l'utilisateur doit confirmer
+              Future.delayed(const Duration(seconds: 3), () {
+                if (mounted && Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                }
+              });
+              // Ne pas lancer d'erreur ici si la confirmation est juste requise
+              return; // Sortir de la fonction
+           } else {
+             // Si pas de confirmation requise et user est null, c'est une vraie erreur
+             throw const AuthException("Erreur inattendue : utilisateur non retourné après inscription.");
+           }
+        }
+      }
+      // final userId = authResponse.user!.id; // On n'a plus besoin de l'ID ici
+
+      // 2. ⭐ SUPPRESSION de l'appel .upsert() ou .update()
+      // L'insertion/mise à jour est entièrement gérée par le trigger maintenant.
+
+      // 3. SUCCÈS (Si confirmation non requise ou déjà faite)
+      if (mounted && authResponse.user != null) { // Vérifier que user n'est pas null
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Inscription réussie ! Un email de confirmation a été envoyé (si activé). Votre compte sera validé prochainement."),
+            content: Text("Inscription réussie ! Votre compte sera validé prochainement par un administrateur."),
             backgroundColor: Colors.green,
           ),
         );
 
-        // On redirige vers la page de login après un court délai
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && Navigator.of(context).canPop()) {
-              Navigator.of(context).pop(); // Retourne à la page de login
+            Navigator.of(context).pop();
           }
         });
       }
 
-    } on AuthException catch (error) { // ✅ Correction: Type correct
+    } on AuthException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -95,18 +112,18 @@ class _SignUpPageState extends State<SignUpPage> {
           ),
         );
       }
-    } on PostgrestException catch (error) { // ✅ Correction: Type correct
-       if (mounted) {
-        AppLogger.error("Erreur Postgrest lors de la mise à jour du profil", error: error, tag: "SignUpPage");
+    } on PostgrestException catch (error) {
+      // Normalement, on ne devrait plus avoir d'erreur Postgrest ici
+      if (mounted) {
+        AppLogger.error("Erreur Postgrest inattendue lors de l'inscription (trigger?)", error: error, tag: "SignUpPage");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text("Une erreur est survenue lors de la finalisation de l'inscription."),
+            content: const Text("Erreur base de données lors de l'inscription."),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
-    }
-    catch (error, stackTrace) {
+    } catch (error, stackTrace) {
       if (mounted) {
         AppLogger.error("Erreur inattendue lors de l'inscription", error: error, stackTrace: stackTrace, tag: "SignUpPage");
         ScaffoldMessenger.of(context).showSnackBar(
@@ -124,7 +141,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
   // --- Fin de la fonction corrigée ---
 
-
+  // ... (build method inchangé) ...
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -168,7 +185,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant.withAlpha(153)),
                     ),
                     keyboardType: TextInputType.name,
-                    textCapitalization: TextCapitalization.words,
+                    textCapitalization: TextCapitalization.words, // Première lettre en majuscule
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Veuillez entrer votre prénom';
@@ -213,6 +230,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       if (value == null || value.trim().isEmpty) {
                         return 'Veuillez entrer un email';
                       }
+                      // Regex simple pour format email
                       if (!RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value)) {
                          return 'Veuillez entrer un email valide';
                       }
