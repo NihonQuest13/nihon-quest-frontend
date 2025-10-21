@@ -1,5 +1,5 @@
 // lib/services/ai_prompts.dart
-// (CORRIGÉ AVEC ANCRAGE RENFORCÉ ET MEILLEUR FALLBACK)
+// (CORRIGÉ POUR ÉVITER LA RÉPÉTITION DE LA DERNIÈRE PHRASE)
 
 /// Contient tous les prompts pour une langue spécifique.
 class LanguagePrompts {
@@ -25,17 +25,15 @@ class LanguagePrompts {
   final String titleFinal;
   final String titleChapterPrefix;
   final String titleChapterSuffix;
-  final String contextNotAvailable; // <-- C'EST CETTE LIGNE QUI EST MODIFIÉE
+  final String contextNotAvailable;
   final String firstChapterContext;
 
-  // --- MODIFICATION : Ajout des champs pour le plan directeur (ton "sommaire") ---
-  final String roadmapHeader; // Pour le résumé du passé (ex: "Plan de l'histoire (Résumé...)")
-  final String similarExcerptHeader; // Doit contenir [NUMBER]
+  final String roadmapHeader;
+  final String similarExcerptHeader;
   final String similarExcerptFooter;
-  final String futureOutlinePrompt; // Le prompt pour générer le plan de 10 chapitres
-  final String futureOutlineHeader; // Le titre pour la section du plan dans le prompt de chapitre
-  final String futureOutlinePriorityRule; // Ta règle de priorité
-  // --- FIN MODIFICATION ---
+  final String futureOutlinePrompt;
+  final String futureOutlineHeader;
+  final String futureOutlinePriorityRule;
 
 
   const LanguagePrompts({
@@ -64,14 +62,12 @@ class LanguagePrompts {
     required this.contextNotAvailable,
     required this.firstChapterContext,
     
-    // --- MODIFICATION : Ajout au constructeur ---
     required this.roadmapHeader,
     required this.similarExcerptHeader,
     required this.similarExcerptFooter,
     required this.futureOutlinePrompt,
     required this.futureOutlineHeader,
     required this.futureOutlinePriorityRule,
-    // --- FIN MODIFICATION ---
   });
 }
 
@@ -84,7 +80,7 @@ class AIPrompts {
     'Espagnol': _spanishPrompts,
     'Italien': _italianPrompts,
     'Coréen': _koreanPrompts,
-    'default': _englishPrompts, // L'anglais est maintenant la langue par défaut
+    'default': _englishPrompts,
   };
 
   /// Récupère le set de prompts pour une langue donnée, ou le set par défaut.
@@ -93,9 +89,6 @@ class AIPrompts {
   }
 }
 
-// --- SECTIONS DE TEXTE MODULAIRES (PARTAGÉES) ---
-
-// --- NUMÉROTATION MISE À JOUR ---
 const _showDontTellPrinciple = '''
 Core Writing Principle - "Show, Don't Tell":
 10. **Do NOT summarize events**. Do not fast-forward the story. Focus on a single, significant scene or a short period of time, rather than trying to cover too much ground in one chapter.
@@ -104,8 +97,6 @@ Core Writing Principle - "Show, Don't Tell":
 13. **Pacing**: **Do not** rush the story. Take time for character psychology and world-building. Lay sufficient groundwork before major events.
 14. **Consistency**: Ensure characters' actions are consistent with their established personalities and motivations. Maintain the logical flow of the plot based on the context provided.
 ''';
-
-// --- PROMPTS PAR LANGUE ---
 
 // Anglais (English)
 const _enRules = '''
@@ -119,7 +110,7 @@ const _enRules = '''
  7.  **Dialogue Format**: **Always** use double quotation marks ("") to enclose dialogue. **Never** use em dashes (—) for dialogues.
  8.  **Writing Style**: The prose should resemble that of a published novel, not a script.
  
- 9.  **Context Analysis (Fanfiction vs. Original)**: // --- NOUVELLE RÈGLE ---
+ 9.  **Context Analysis (Fanfiction vs. Original)**:
      - Before writing, determine if the "[NOVEL_SPECIFICATIONS]" field describes an **original story** or a **fanfiction** (based on an existing work: book, movie, game, etc.).
      - If it is a **fanfiction**: Your priority is to respect the lore, characters, and plot of the original work. Use your knowledge of that work. Then, apply the user's specifications on top of that foundation.
      - If it is an **original story**: Base your creation *strictly* on the specifications provided.
@@ -144,9 +135,8 @@ const LanguagePrompts _englishPrompts = LanguagePrompts(
   contextLastChapterHeader: "Last Chapter (Chapter [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Relevant Context:",
   contextLastSentenceHeader: "As a reminder, the last sentence was:",
-  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
-  contextFollowInstruction: "\n**ABSOLUTE PRIORITY (ANCHORING):** The new chapter must begin **exactly where the previous one left off**. Your first sentence must be the **immediate and direct** continuation of this last sentence: \"[LAST_SENTENCE]\" (which was just provided). Do NOT time-skip (no \"The next morning...\" or sudden location changes).",
-  // --- ⬆️ FIN MODIFICATION ⬆️ ---
+  // ✅ CORRECTION
+  contextFollowInstruction: "\n**ABSOLUTE PRIORITY (ANCHORING):** The new chapter must begin **immediately after** the last sentence of the previous chapter, which was: \"[LAST_SENTENCE]\". **Do NOT repeat this sentence.** Start writing the continuation directly. Do NOT time-skip (no \"The next morning...\" or sudden location changes).",
   outputFormatFirst: '''
  Required output format (do not write anything before this line):
  Chapter 1: [An engaging title for this first chapter]
@@ -204,12 +194,9 @@ Your response must only contain the text of the summary. Do NOT start your respo
   titleFinal: 'Final Chapter',
   titleChapterPrefix: 'Chapter ',
   titleChapterSuffix: '',
-  // --- ✅ CORRECTION ---
   contextNotAvailable: "No particular specifications.",
-  // --- FIN CORRECTION ---
   firstChapterContext: "This is the first chapter.",
   
-  // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Story Plan (Overall summary of the story so far)",
   similarExcerptHeader: "--- Relevant Excerpt [NUMBER] ---",
   similarExcerptFooter: "--- End of Excerpt ---",
@@ -237,7 +224,6 @@ Required output format (ONLY the list):
 ''',
   futureOutlineHeader: "Plot Outline for the next 10 chapters (Guiding thread):",
   futureOutlinePriorityRule: "\n**Priority Rule**: This outline is your guiding thread. HOWEVER, if it conflicts with the logical continuation of the previous sentence/chapter, **always prioritize the logical continuation** (the FAISS context).",
-  // --- FIN MODIFICATION ---
 );
 
 
@@ -245,7 +231,7 @@ Required output format (ONLY the list):
 const _frRules = '''
  Règles strictes :
  1.  Écrivez en français [NOVEL_LANGUAGE].
- 2.  La longueur du chapitre doit être d'environ 3000 caractères.
+ 2.  La longueur du chapitre doit être d'environ 3000 caractères (sans compter les espaces).
  3.  Maintenez la cohérence avec le genre "[NOVEL_GENRE]" et les spécifications "[NOVEL_SPECIFICATIONS]".
  4.  Rendez l'histoire captivante et donnez envie au lecteur de continuer à lire (sauf pour le chapitre final). Plantez activement des rebondissements et laissez des mystères.
  5.  **Très important** : Commencez votre réponse directement par la ligne du titre du chapitre. **N'écrivez RIEN** avant cette ligne (pas de salutations, confirmations, commentaires, etc.).
@@ -253,15 +239,14 @@ const _frRules = '''
  7.  **Format des dialogues**: Utilisez **toujours** des guillemets français (« ») ou des guillemets doubles ("") pour encadrer les dialogues. **N'utilisez jamais** de tirets cadratins (—) pour les dialogues.
  8.  **Style d'écriture** : La prose doit ressembler à celle d'un roman publié, pas à un script.
  
- 9.  **Analyse du Contexte (Fanfiction vs. Original)**: // --- NOUVELLE RÈGLE ---
+ 9.  **Analyse du Contexte (Fanfiction vs. Original)**:
      - Avant d'écrire, déterminez si le champ "[NOVEL_SPECIFICATIONS]" décrit une **histoire originale** ou une **fanfiction** (basée sur une œuvre existante : livre, film, jeu, etc.).
      - Si c'est une **fanfiction** : Votre priorité est de respecter l'univers, les personnages et l'histoire de l'œuvre de base. Utilisez vos connaissances sur cette œuvre. Appliquez ensuite les spécifications de l'utilisateur par-dessus cette base.
-     - Si c'est une **histoire originale** : N'inventez que ce qui est nécessaire et basez-vous *strictement* sur les spécifications fournies.
+     - Si c'est une **histoire originale** : N'inventez que ce qui est nécessaire et basez-vous *strictement* sur les spécifications fournie.
 
  15. **Paragraphes** : Structurez le texte avec des paragraphes appropriés. **Toujours** utiliser un double saut de ligne (une ligne vide) entre les paragraphes pour la lisibilité.
 ''';
 
-// --- NUMÉROTATION MISE À JOUR ---
 const _frShowDontTell = '''
 Principe d'écriture fondamental - "Montrer, ne pas dire" :
 10. **Ne résumez PAS les événements**. Ne faites pas d'avance rapide dans l'histoire. Concentrez-vous sur une seule scène significative ou une courte période, plutôt que d'essayer de couvrir trop de terrain en un seul chapitre.
@@ -288,9 +273,8 @@ const LanguagePrompts _frenchPrompts = LanguagePrompts(
   contextLastChapterHeader: "Dernier chapitre (Chapitre [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Contexte pertinent :",
   contextLastSentenceHeader: "Pour rappel, la dernière phrase était :",
-  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
-  contextFollowInstruction: "\n**PRIORITÉ ABSOLUE (ANCRAGE) :** Le nouveau chapitre doit commencer **exactement là où le précédent s'est arrêté**. Votre première phrase doit être la suite **immédiate et directe** de cette dernière phrase : \"[LAST_SENTENCE]\" (qui vient d'être fournie). Ne sautez PAS dans le temps (pas de \"Le lendemain matin...\" ou de changement soudain de lieu).",
-  // --- ⬆️ FIN MODIFICATION ⬆️ ---
+  // ✅ CORRECTION
+  contextFollowInstruction: "\n**PRIORITÉ ABSOLUE (ANCRAGE) :** Le nouveau chapitre doit commencer **immédiatement après** la dernière phrase du chapitre précédent, qui était : \"[LAST_SENTENCE]\". **Ne répétez PAS cette phrase.** Écrivez directement la suite. Ne sautez PAS dans le temps (pas de \"Le lendemain matin...\" ou de changement soudain de lieu).",
   outputFormatFirst: '''
  Format de sortie requis (n'écrivez rien avant cette ligne) :
  Chapitre 1 : [Un titre captivant pour ce premier chapitre]
@@ -348,12 +332,9 @@ Votre réponse ne doit contenir que le texte du résumé. Ne commencez PAS votre
   titleFinal: 'Chapitre Final',
   titleChapterPrefix: 'Chapitre ',
   titleChapterSuffix: '',
-  // --- ✅ CORRECTION ---
   contextNotAvailable: "Aucune spécification particulière.",
-  // --- FIN CORRECTION ---
   firstChapterContext: "C'est le premier chapitre.",
   
-  // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Plan de l'histoire (Résumé général de l'histoire jusqu'à présent)",
   similarExcerptHeader: "--- Extrait pertinent [NUMBER] ---",
   similarExcerptFooter: "--- Fin de l'extrait ---",
@@ -381,7 +362,6 @@ Format de sortie OBLIGATOIRE (uniquement la liste) :
 ''',
   futureOutlineHeader: "Plan directeur des 10 prochains chapitres (fil rouge) :",
   futureOutlinePriorityRule: "\n**Règle de priorité** : Ce plan est votre fil rouge. MAIS, s'il entre en conflit avec la suite logique de la phrase/chapitre précédent, **donnez toujours la priorité à la suite logique** (le contexte FAISS).",
-  // --- FIN MODIFICATION ---
 );
 
 // Espagnol (Spanish)
@@ -400,14 +380,14 @@ const LanguagePrompts _spanishPrompts = LanguagePrompts(
  7.  **Formato de diálogo**: Usa **siempre** comillas dobles ("") para los diálogos.
  8.  **Estilo de escritura**: La prosa debe parecerse a la de una novela publicada, no a un guion.
  
- 9.  **Análisis de Contexto (Fanfiction vs. Original)**: // --- NOUVELLE RÈGLE ---
+ 9.  **Análisis de Contexto (Fanfiction vs. Original)**:
      - Antes de escribir, determina si el campo "[NOVEL_SPECIFICATIONS]" describe una **historia original** o una **fanfiction** (basada en una obra existente: libro, película, juego, etc.).
      - Si es una **fanfiction**: Tu prioridad es respetar el lore, los personajes y la trama de la obra original. Utiliza tu conocimiento de esa obra. Luego, aplica las especificaciones del usuario sobre esa base.
      - Si es una **historia original**: Basa tu creación *estrictamente* en las especificaciones proporcionadas.
  
  15. **Párrafos**: Estructura el texto con párrafos adecuados. **Siempre** usa un doble salto de línea (una línea vacía) entre párrafos para facilitar la lectura.
 
-Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR ---
+Principio de escritura - "Mostrar, no contar":
 10. **NO resumas los eventos**. Concéntrate en una sola escena significativa.
 11. **Describe en detalle**: La atmósfera, las expresiones faciales, los detalles sensoriales.
 12. **Representa la vida interior**: Muestra las emociones a través de acciones, no las nombres directamente.
@@ -422,9 +402,8 @@ Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR
   contextLastChapterHeader: "Último capítulo (Capítulo [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Contexto relevante:",
   contextLastSentenceHeader: "Como recordatorio, la última frase fue:",
-  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
-  contextFollowInstruction: "\n**PRIORIDAD ABSOLUTA (ANCLAJE):** El nuevo capítulo debe comenzar **exactamente donde terminó el anterior**. Tu primera frase debe ser la continuación **inmediata y directa** de esta última frase: \"[LAST_SENTENCE]\" (que se acaba de proporcionar). NO saltes en el tiempo (nada de \"A la mañana siguiente...\" o cambios bruscos de ubicación).",
-  // --- ⬆️ FIN MODIFICATION ⬆️ ---
+  // ✅ CORRECTION
+  contextFollowInstruction: "\n**PRIORIDAD ABSOLUTA (ANCLAJE):** El nuevo capítulo debe comenzar **inmediatamente después** de la última frase del capítulo anterior, que fue: \"[LAST_SENTENCE]\". **NO repitas esta frase.** Empieza a escribir la continuación directamente. NO saltes en el tiempo (nada de \"A la mañana siguiente...\" o cambios bruscos de ubicación).",
   outputFormatFirst: 'Formato requerido:\nCapítulo 1: [Título atractivo]\n\n[Contenido del Capítulo 1 aquí...]',
   outputFormatNext: 'Formato requerido:\nCapítulo [NEXT_CHAPTER_NUMBER]: [Título interesante]\n\n[Contenido del Capítulo [NEXT_CHAPTER_NUMBER] aquí...]',
   outputFormatFinal: 'Formato requerido:\nCapítulo Final: [Título emotivo]\n\n[Contenido del capítulo final aquí...]',
@@ -434,12 +413,9 @@ Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR
   titleFinal: 'Capítulo Final',
   titleChapterPrefix: 'Capítulo ',
   titleChapterSuffix: '',
-  // --- ✅ CORRECTION ---
   contextNotAvailable: "Sin especificaciones particulares.",
-  // --- FIN CORRECTION ---
   firstChapterContext: "Este es el primer capítulo.",
   
-  // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Plan de la historia (Resumen general de la historia hasta ahora)",
   similarExcerptHeader: "--- Extracto relevante [NUMBER] ---",
   similarExcerptFooter: "--- Fin del extracto ---",
@@ -467,7 +443,6 @@ Formato de salida OBLIGATORIO (solo la lista):
 ''',
   futureOutlineHeader: "Esquema de la trama para los próximos 10 capítulos (hilo conductor):",
   futureOutlinePriorityRule: "\n**Regla de prioridad**: Este esquema es tu hilo conductor. SIN EMBARGO, si entra en conflicto con la continuación lógica de la frase/capítulo anterior, **siempre prioriza la continuación lógica** (el contexto FAISS).",
-  // --- FIN MODIFICATION ---
 );
 
 // Italien (Italian)
@@ -486,14 +461,14 @@ const LanguagePrompts _italianPrompts = LanguagePrompts(
  7.  **Formato dei dialoghi**: Usa **sempre** le virgolette doppie ("") per i dialoghi.
  8.  **Stile di scrittura**: La prosa deve assomigliare a quella di un romanzo pubblicato, non a una sceneggiatura.
 
- 9.  **Analisi del Contesto (Fanfiction vs. Originale)**: // --- NOUVELLE RÈGLE ---
+ 9.  **Analisi del Contesto (Fanfiction vs. Originale)**:
      - Prima di scrivere, determina se il campo "[NOVEL_SPECIFICATIONS]" descrive una **storia originale** o una **fanfiction** (basata su un'opera esistente: libro, film, gioco, ecc.).
      - Se è una **fanfiction**: La tua priorità è rispettare la lore, i personaggi e la trama dell'opera originale. Usa la tua conoscenza di quell'opera. Quindi, applica le specifiche dell'utente su quella base.
      - Se è una **storia originale**: Basa la tua creazione *strettamente* sulle specifiche fornite.
  
  15. **Paragrafi**: Struttura il testo con paragrafi appropriati. **Sempre** usare un doppio a capo (una riga vuota) tra i paragrafi per la leggibilità.
 
-Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À JOUR ---
+Principio di scrittura - "Mostra, non raccontare":
 10. **NON riassumere gli eventi**. Concentrati su una singola scena significativa.
 11. **Descrivi in dettaglio**: L'atmosfera, le espressioni facciali, i dettagli sensoriali.
 12. **Rappresenta la vita interiore**: Mostra le emozioni attraverso le azioni, non nominarle direttamente.
@@ -508,9 +483,8 @@ Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À 
   contextLastChapterHeader: "Ultimo capitolo (Capitolo [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "Contesto rilevante:",
   contextLastSentenceHeader: "Per promemoria, l'ultima frase era:",
-  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
-  contextFollowInstruction: "\n**PRIORITÀ ASSOLUTA (ANCORAGGIO):** Il nuovo capitolo deve iniziare **esattamente dove si è interrotto il precedente**. La tua prima frase deve essere la continuazione **immediata e diretta** di quest'ultima frase: \"[LAST_SENTENCE]\" (appena fornita). NON saltare nel tempo (niente \"La mattina dopo...\" o cambi improvvisi di luogo).",
-  // --- ⬆️ FIN MODIFICATION ⬆️ ---
+  // ✅ CORRECTION
+  contextFollowInstruction: "\n**PRIORITÀ ASSOLUTA (ANCORAGGIO):** Il nuovo capitolo deve iniziare **immediatamente dopo** l'ultima frase del capitolo precedente, che era: \"[LAST_SENTENCE]\". **NON ripetere questa frase.** Inizia a scrivere direttamente il seguito. NON saltare nel tempo (niente \"La mattina dopo...\" o cambi improvvisi di luogo).",
   outputFormatFirst: 'Formato richiesto:\nCapitolo 1: [Titolo accattivante]\n\n[Contenuto del Capitolo 1 qui...]',
   outputFormatNext: 'Formato richiesto:\nCapitolo [NEXT_CHAPTER_NUMBER]: [Titolo interessante]\n\n[Contenuto del Capitolo [NEXT_CHAPTER_NUMBER] qui...]',
   outputFormatFinal: 'Formato richiesto:\nCapitolo Finale: [Titolo commovente]\n\n[Contenuto del capitolo finale qui...]',
@@ -520,12 +494,9 @@ Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À 
   titleFinal: 'Capitolo Finale',
   titleChapterPrefix: 'Capitolo ',
   titleChapterSuffix: '',
-  // --- ✅ CORRECTION ---
   contextNotAvailable: "Nessuna specifica particolare.",
-  // --- FIN CORRECTION ---
   firstChapterContext: "Questo è il primo capitolo.",
   
-  // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "Piano della storia (Riassunto generale della storia finora)",
   similarExcerptHeader: "--- Estratto pertinente [NUMBER] ---",
   similarExcerptFooter: "--- Fine dell'estratto ---",
@@ -553,7 +524,6 @@ Formato di output OBBLIGATORIO (solo l'elenco):
 ''',
   futureOutlineHeader: "Bozza della trama per i prossimi 10 capitoli (filo conduttore):",
   futureOutlinePriorityRule: "\n**Regola di priorità**: Questa bozza è il tuo filo conduttore. TUTTAVIA, se è in conflitto con la continuazione logica della frase/capitolo precedente, **dai sempre la priorità alla continuazione logica** (il contesto FAISS).",
-  // --- FIN MODIFICATION ---
 );
 
 // Coréen (Korean)
@@ -572,14 +542,14 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
  7.  **대화 형식**: 대화에는 **항상** 큰따옴표("")를 사용하십시오.
  8.  **글쓰기 스타일**: 대본이 아닌 출판된 소설과 같은 산문이어야 합니다.
 
- 9.  **문맥 분석 (팬픽션 vs. 오리지널)**: // --- NOUVELLE RÈGLE ---
+ 9.  **문맥 분석 (팬픽션 vs. 오리지널)**:
      - 작성하기 전에 "[NOVEL_SPECIFICATIONS]" 필드가 **오리지널 스토리**인지 또는 기존 작품(책, 영화, 게임 등)에 기반한 **팬픽션**인지 확인하십시오.
      - **팬픽션**인 경우: 원작의 설정, 캐릭터, 줄거리를 존중하는 것을 최우선으로 합니다. 해당 작품에 대한 지식을 활용하십시오. 그런 다음 그 기반 위에 사용자의 사양을 적용하십시오.
      - **오리지널 스토리**인 경우: 제공된 사양에 *엄격하게* 기반하여 창작하십시오.
  
  15. **단락**: 텍스트를 적절한 단락으로 구성하십시오. 가독성을 위해 단락 사이에 **항상** 이중 줄 바꿈(빈 줄)을 사용하십시오.
 
-핵심 글쓰기 원칙 - "말하지 말고 보여주기": // --- NUMÉROTATION MISE À JOUR ---
+핵심 글쓰기 원칙 - "말하지 말고 보여주기":
 10. **사건을 요약하지 마십시오**. 한 장면에 집중하십시오.
 11. **자세히 묘사하십시오**: 분위기, 표정, 감각적 세부 사항.
 12. **내면의 삶을 묘사하십시오**: 행동을 통해 감정을 보여주십시오.
@@ -594,9 +564,8 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
   contextLastChapterHeader: "마지막 장 (챕터 [CHAPTER_NUMBER]):",
   contextSimilarSectionHeader: "관련 문맥:",
   contextLastSentenceHeader: "참고로 마지막 문장은 다음과 같았습니다:",
-  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
-  contextFollowInstruction: "\n**절대적 우선순위 (앵커링):** 새 챕터는 **이전 챕터가 끝난 지점에서 정확히** 시작해야 합니다. 첫 문장은 방금 제공된 마지막 문장인 \"[LAST_SENTENCE]\"의 **즉각적이고 직접적인** 연속이어야 합니다. 시간을 건너뛰지 마십시오(예: \"다음 날 아침...\" 또는 갑작스러운 장소 변경 금지).",
-  // --- ⬆️ FIN MODIFICATION ⬆️ ---
+  // ✅ CORRECTION
+  contextFollowInstruction: "\n**절대적 우선순위 (앵커링):** 새 챕터는 이전 챕터의 마지막 문장인 \"[LAST_SENTENCE]\" **바로 다음부터** 시작해야 합니다. **이 문장을 반복하지 마십시오.** 바로 다음 내용을 작성하십시오. 시간을 건너뛰지 마십시오(예: \"다음 날 아침...\" 또는 갑작스러운 장소 변경 금지).",
   outputFormatFirst: '필수 형식:\n제 1 장: [매력적인 제목]\n\n[제 1 장 내용...]',
   outputFormatNext: '필수 형식:\n제 [NEXT_CHAPTER_NUMBER] 장: [흥미로운 제목]\n\n[제 [NEXT_CHAPTER_NUMBER] 장 내용...]',
   outputFormatFinal: '필수 형식:\n마지막 장: [감동적인 제목]\n\n[마지막 장 내용...]',
@@ -606,12 +575,9 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
   titleFinal: '마지막 장',
   titleChapterPrefix: '제 ',
   titleChapterSuffix: ' 장',
-  // --- ✅ CORRECTION ---
   contextNotAvailable: "특별한 사양 없음.",
-  // --- FIN CORRECTION ---
   firstChapterContext: "이것은 첫 번째 장입니다.",
   
-  // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "이야기 계획 (지금까지의 이야기 전체 요약)",
   similarExcerptHeader: "--- 관련 발췌 [NUMBER] ---",
   similarExcerptFooter: "--- 발췌 종료 ---",
@@ -639,7 +605,6 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
 ''',
   futureOutlineHeader: "향후 10개 챕터의 줄거리 개요 (가이드라인):",
   futureOutlinePriorityRule: "\n**우선순위 규칙**: 이 개요는 당신의 가이드라인입니다. 하지만, 이전 문장/챕터의 논리적 연속과 충돌하는 경우, **항상 논리적 연속을 우선**하십시오 (FAISS 컨텍스트).",
-  // --- FIN MODIFICATION ---
 );
 
 // Japonais
@@ -656,7 +621,7 @@ const _jpRules = '''
  9.  **会話のフォーマット**: 会話には**必ず**引用符（「」）を使用してください。ダッシュ（—）は絶対に使用しないでください。
  10. **文体**: 脚本ではなく、出版された小説のような散文を目指してください。
 
- 11. **コンテキスト分析（ファンフィクション vs. オリジナル）**: // --- NOUVELLE RÈGLE ---
+ 11. **コンテキスト分析（ファンフィクション vs. オリジナル）**:
      - 執筆開始前に、「[NOVEL_SPECIFICATIONS]」の内容が**オリジナルストーリー**か、既存の作品（書籍、映画、ゲーム等）に基づいた**ファンフィクション**かを判断してください。
      - **ファンフィクションの場合**: あなたの知識に基づき、原作の世界観、キャラクター、ストーリーを尊重することを最優先とします。その上で、ユーザーの指定を適用してください。
      - **オリジナルストーリーの場合**: 提供された仕様に**厳密に**基づいて世界観やキャラクターを作成してください。
@@ -664,7 +629,6 @@ const _jpRules = '''
  18. **段落**: 読みやすさのために、適切な段落（パラグラフ）を設けてください。段落と段落の間には**必ず**空行（改行）を一つ入れてください。
 ''';
 
-// --- NUMÉROTATION MISE À JOUR --- (Commence à 12 au lieu de 11)
 const _jpShowDontTell = '''
 執筆の最重要原則 - 「語るな、見せろ」：
 12. **出来事を要約しない**：物語を早送りしないでください。一つの章で多くの出来事を詰め込むのではなく、一つの重要なシーンや短い時間軸に焦点を当ててください。
@@ -693,9 +657,8 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
   contextLastChapterHeader: "前の章 (第[CHAPTER_NUMBER]章):",
   contextSimilarSectionHeader: "関連コンテキスト:",
   contextLastSentenceHeader: "念のため、最後の文は次のとおりでした:",
-  // --- ⬇️ MODIFICATION ANCRAGE RENFORCÉ ⬇️ ---
-  contextFollowInstruction: "\n**最優先事項 (アンカリング):** 新しい章は、**前の章が終わった場所から正確に**始めなければなりません。最初の一文は、提供された最後の文「[LAST_SENTENCE]」の**即時かつ直接的**な続きである必要があります。時間をスキップしないでください（「翌朝...」や突然の場所の変更は禁止です）。",
-  // --- ⬆️ FIN MODIFICATION ⬆️ ---
+  // ✅ CORRECTION
+  contextFollowInstruction: "\n**最優先事項 (アンカリング):** 新しい章は、前の章の最後の文「[LAST_SENTENCE]」の**直後から**始めなければなりません。**この文を繰り返さないでください。**続きを直接書き始めてください。時間をスキップしないでください（「翌朝...」や突然の場所の変更は禁止です）。",
   outputFormatFirst: '''
  必須出力フォーマット（この行より前に何も書かないでください）：
  第一章 : [この最初の章に適した魅力的なタイトル]
@@ -753,11 +716,9 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
   titleFinal: '最終章',
   titleChapterPrefix: '第',
   titleChapterSuffix: '章',
-  // --- ✅ PAS DE CORRECTION NÉCESSAIRE ICI, "特に指定なし" EST PARFAIT ---
   contextNotAvailable: "特に指定なし",
   firstChapterContext: "これは最初の章です。",
 
-  // --- MODIFICATION : Ajout des traductions ---
   roadmapHeader: "物語の計画（これまでの物語の全体的な概要）",
   similarExcerptHeader: "--- 関連する抜粋 [NUMBER] ---",
   similarExcerptFooter: "--- 抜粋終了 ---",
@@ -785,5 +746,4 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
 ''',
   futureOutlineHeader: "次の10章のプロット概要（導きの糸）：",
   futureOutlinePriorityRule: "\n**優先ルール**：この概要はあなたの導きの糸です。しかし、前の文/章の論理的な続きと矛盾する場合は、**常に論a的な続きを最優先**してください（FAISSコンテキスト）。",
-  // --- FIN MODIFICATION ---
 );

@@ -1,4 +1,4 @@
-// lib/novel_reader_page.dart (MODIFIÉ POUR CACHER LE PLAN FUTUR)
+// lib/novel_reader_page.dart (MODIFIÉ POUR LE MODE ÉCRIVAIN ET L'AUTO-REFRESH)
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
@@ -9,8 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:collection/collection.dart';
-// import 'package:flutter_markdown/flutter_markdown.dart'; // Plus nécessaire ici
-// import 'package:url_launcher/url_launcher.dart'; // Plus nécessaire ici
 
 import 'models.dart';
 import 'providers.dart';
@@ -19,7 +17,7 @@ import 'services/ai_prompts.dart';
 import 'services/vocabulary_service.dart';
 import 'services/sync_service.dart';
 import 'widgets/streaming_text_widget.dart';
-import 'utils/app_logger.dart'; // Utilisation du logger
+import 'utils/app_logger.dart';
 
 
 class NovelReaderPage extends ConsumerStatefulWidget {
@@ -60,6 +58,10 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   Stream<String>? _chapterStream;
   bool _showUIElements = true;
 
+  // --- NOUVEAU : Pour l'édition du plan futur ---
+  final TextEditingController _futureOutlineController = TextEditingController();
+  bool _isEditingOutline = false;
+  // --- FIN ---
 
   @override
   void initState() {
@@ -79,21 +81,17 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     _editingTitleController.dispose();
     _editingContentController.dispose();
     _editingScrollController.dispose();
+    _futureOutlineController.dispose();
 
     _pageController.removeListener(_onPageChanged);
-    // Correction : vérifier mounted avant d'accéder à _pageController
     if (mounted && _pageController.hasClients) {
-        _saveCurrentScrollPosition(); // Sauvegarde la position avant de disposer
+        _saveCurrentScrollPosition();
     }
-     // Dispose seulement s'il a été initialisé et a des clients
     if (_pageController.hasClients) {
         _pageController.dispose();
     }
     _chapterProgressNotifier.dispose();
     for (var controller in _scrollControllers.values) {
-      // Vérifier si le listener a été ajouté avant de le supprimer
-      // (peut ne pas être le cas si la page n'a jamais été affichée)
-      // Ceci évite une erreur si le listener n'était pas attaché.
        try {
            controller.removeListener(_updateScrollProgress);
        } catch (e) {
@@ -165,11 +163,10 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
   void _onPageChanged() {
-      // Correction: Ne rien faire si le contrôleur n'est plus utilisable
       if (!mounted || !_pageController.hasClients || _pageController.page == null) return;
       final newPage = _pageController.page!.round();
       if (newPage != _currentPage) {
-        _saveCurrentScrollPosition(); // Sauvegarder la position de l'ancienne page
+        _saveCurrentScrollPosition();
         if (mounted) {
             setState(() {
               _currentPage = newPage;
@@ -180,15 +177,13 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             });
         }
         _saveLastViewedPage(newPage);
-        _attachScrollListenerToCurrentPage(); // Attacher à la nouvelle page
+        _attachScrollListenerToCurrentPage();
       }
   }
 
 
   void _attachScrollListenerToCurrentPage() {
-      // Détacher tous les listeners précédents pour éviter les appels multiples
       for (var entry in _scrollControllers.entries) {
-          // Utiliser un try-catch au cas où le listener n'aurait pas été ajouté
           try {
              entry.value.removeListener(_updateScrollProgress);
           } catch (e) {
@@ -198,12 +193,9 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
       final controller = _scrollControllers[_currentPage];
       if (controller != null && controller.hasClients) {
-          // Attacher le listener uniquement au contrôleur de la page actuelle
           controller.addListener(_updateScrollProgress);
-          // Mettre à jour immédiatement la progression pour la nouvelle page
           _updateScrollProgress();
       } else {
-          // S'il n'y a pas de contrôleur ou qu'il n'est pas prêt, réinitialiser la progression
           _chapterProgressNotifier.value = 0.0;
           AppLogger.info("Aucun ScrollController actif trouvé pour la page $_currentPage.", tag: "NovelReaderPage");
       }
@@ -213,18 +205,14 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   void _updateScrollProgress() {
     final controller = _scrollControllers[_currentPage];
     if (controller != null && controller.hasClients) {
-        // Ajouter une vérification pour éviter la division par zéro si maxScrollExtent est 0
         final maxScroll = controller.position.maxScrollExtent;
         if (maxScroll > 0) {
             final progress = controller.offset / maxScroll;
             _chapterProgressNotifier.value = progress.clamp(0.0, 1.0);
         } else {
-            // Si le contenu ne dépasse pas l'écran, considérer comme 100% ou 0% ?
-            // 0% semble plus logique si on ne peut pas scroller.
             _chapterProgressNotifier.value = 0.0;
         }
     } else {
-        // Si le contrôleur n'est pas prêt, la progression est 0.
         _chapterProgressNotifier.value = 0.0;
     }
   }
@@ -242,10 +230,9 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     int lastViewedPage = _prefs.getInt('last_page_${widget.novelId}') ?? 0;
     int initialPage = 0;
     if (novel.chapters.isNotEmpty) {
-      // S'assurer que l'index est valide
       initialPage = lastViewedPage.clamp(0, novel.chapters.length - 1);
     } else {
-      initialPage = -1; // Indique qu'il n'y a pas de chapitres
+      initialPage = -1;
     }
 
     if (mounted) {
@@ -253,8 +240,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         _currentPage = initialPage;
         _prefsLoaded = true;
       });
-      // Recréer le PageController avec la page initiale correcte
-      // S'il n'y a pas de chapitre (initialPage = -1), on met 0 pour éviter une erreur
        if (_pageController.hasClients) {
           _pageController.removeListener(_onPageChanged);
           _pageController.dispose();
@@ -262,15 +247,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       _pageController = PageController(initialPage: max(0, _currentPage));
       _pageController.addListener(_onPageChanged);
 
-      // Utiliser addPostFrameCallback pour s'assurer que le widget est construit
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Vérifier à nouveau `mounted` et `hasClients` avant de sauter ou attacher
         if (mounted && _pageController.hasClients && _currentPage != -1) {
-          // Pas besoin de jumpToPage si initialPage est correct
-          // _pageController.jumpToPage(_currentPage);
-           _attachScrollListenerToCurrentPage(); // Important d'attacher ici après la construction
+           _attachScrollListenerToCurrentPage();
         } else if (mounted && _currentPage == -1) {
-           _chapterProgressNotifier.value = 0.0; // État vide
+           _chapterProgressNotifier.value = 0.0;
         }
       });
     }
@@ -279,8 +260,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
   Future<Novel?> _getNovelFromProvider() async {
     if (!mounted) return null;
-    // Utiliser watch pour réagir aux changements ou read si on veut juste la valeur actuelle?
-    // 'read' est suffisant ici car on l'appelle dans des méthodes spécifiques.
     final asyncNovels = ref.read(novelsProvider);
     return asyncNovels.when(
       data: (novels) => novels.firstWhereOrNull((n) => n.id == widget.novelId),
@@ -297,16 +276,13 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   Future<void> _saveCurrentScrollPosition() async {
-    // Ne rien faire si les préférences ne sont pas chargées ou si le widget n'est plus monté
     if (!_prefsLoaded || !mounted) return;
 
     final novel = await _getNovelFromProvider();
     if (novel == null) return;
 
-    // Vérifier si la page actuelle est valide
     if (_currentPage >= 0 && _currentPage < novel.chapters.length) {
       final controller = _scrollControllers[_currentPage];
-      // Vérifier si le contrôleur existe et est attaché à une vue
       if (controller != null && controller.hasClients) {
         try {
           await _prefs.setDouble('scroll_pos_${widget.novelId}_$_currentPage', controller.position.pixels);
@@ -332,13 +308,10 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
     if (savedPosition != null) {
-      // Utiliser addPostFrameCallback pour s'assurer que le layout est prêt
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Vérifier à nouveau que tout est prêt avant de sauter
         if (mounted && controller.hasClients) {
-          // Vérifier si la position est valide par rapport aux limites actuelles
           final maxScroll = controller.position.maxScrollExtent;
-           final positionToJump = savedPosition.clamp(0.0, maxScroll); // Clamp pour éviter les erreurs
+           final positionToJump = savedPosition.clamp(0.0, maxScroll);
 
           if (positionToJump != savedPosition) {
              AppLogger.warning("Clamped saved position $savedPosition to $positionToJump (max: $maxScroll)", tag: "NovelReaderPage");
@@ -355,7 +328,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   Future<void> _saveLastViewedPage(int page) async {
-    // S'assurer que les préférences sont chargées et que la page est valide
     if (!_prefsLoaded || !mounted || page < 0) return;
     try {
       await _prefs.setInt('last_page_${widget.novelId}', page);
@@ -393,7 +365,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     if (_isGeneratingNextChapter || novel.chapters.isEmpty) return;
 
     final int chapterIndex = _currentPage;
-     // Vérifier si l'index est valide
      if (chapterIndex < 0 || chapterIndex >= novel.chapters.length) {
         AppLogger.warning("Attempted to edit invalid chapter index: $chapterIndex", tag: "NovelReaderPage");
         return;
@@ -414,7 +385,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       _editingContentController.text = currentChapter.content;
     });
 
-    // S'assurer que le contrôleur d'édition est prêt avant de sauter
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _editingScrollController.hasClients) {
         _editingScrollController.jumpTo(currentScrollOffset);
@@ -436,7 +406,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
 
-  // ✅ CORRIGÉ : Utilise la nouvelle méthode `updateChapter` du provider.
   Future<void> _saveEdits(Novel novel) async {
     if (_editingChapterIndex == null || !mounted) return;
 
@@ -444,32 +413,27 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     final double editorScrollOffset = _editingScrollController.hasClients ? _editingScrollController.offset : 0.0;
      AppLogger.info("Saving edits for chapter $chapterIndexToUpdate. Editor scroll offset: $editorScrollOffset", tag: "NovelReaderPage");
 
-    // Vérifier si l'index est toujours valide (au cas où des chapitres auraient été supprimés entre temps?)
     if (chapterIndexToUpdate < 0 || chapterIndexToUpdate >= novel.chapters.length) {
         AppLogger.error("Cannot save edits, chapter index $chapterIndexToUpdate is invalid.", tag: "NovelReaderPage");
         _showSnackbarMessage("Erreur : Impossible de sauvegarder, le chapitre semble invalide.", Colors.redAccent);
-         setState(() { _isEditing = false; _editingChapterIndex = null; }); // Reset state
+         setState(() { _isEditing = false; _editingChapterIndex = null; });
         return;
     }
 
     final originalChapter = novel.chapters[chapterIndexToUpdate];
     final updatedChapter = Chapter(
-      id: originalChapter.id, // Garder l'ID original
+      id: originalChapter.id,
       title: _editingTitleController.text.trim(),
       content: _editingContentController.text.trim(),
-      createdAt: originalChapter.createdAt, // Garder la date de création originale
+      createdAt: originalChapter.createdAt,
     );
 
     try {
-        // Appel à la méthode optimisée du provider
         await ref.read(novelsProvider.notifier).updateChapter(novel.id, updatedChapter);
 
         final syncTask = SyncTask(
           action: 'update',
           novelId: novel.id,
-          // Correction : L'index pour le backend peut être différent de l'ID string
-          // Il faut le re-calculer ou passer l'ID si le backend le gère.
-          // Supposons que le backend utilise l'index dans la liste actuelle.
           chapterIndex: chapterIndexToUpdate,
           content: updatedChapter.content,
         );
@@ -482,11 +446,9 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           _editingChapterIndex = null;
         });
 
-        // Restaurer la position de lecture après la sauvegarde
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final readerScrollController = _scrollControllers[chapterIndexToUpdate];
           if (mounted && readerScrollController != null && readerScrollController.hasClients) {
-              // S'assurer que la position est dans les limites après la mise à jour potentielle du contenu
               final maxScroll = readerScrollController.position.maxScrollExtent;
               final positionToJump = editorScrollOffset.clamp(0.0, maxScroll);
               readerScrollController.jumpTo(positionToJump);
@@ -500,7 +462,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         AppLogger.error("Error saving chapter edits", error: e, tag: "NovelReaderPage");
         if (mounted) {
             _showSnackbarMessage("Erreur lors de la sauvegarde du chapitre: ${e.toString()}", Colors.redAccent);
-             // On ne sort pas forcément du mode édition en cas d'erreur
         }
     }
   }
@@ -515,7 +476,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           ? "Finalisation d'une synchronisation..."
           : "Des modifications sont en attente de synchronisation...";
       _showSnackbarMessage(message, Colors.blueAccent);
-      // Essayer de forcer le traitement, mais ne pas générer pour l'instant
       ref.read(syncServiceProvider).processQueue();
       return;
     }
@@ -526,7 +486,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     }
 
     AppLogger.info(">>> Appel de _generateAndAddNewChapter depuis _guardedGenerateChapter...", tag: "NovelReaderPage");
-    // Passer une copie du novel pour éviter les modifications concurrentes? Non, preparePrompt prend déjà une copie via toJsonForIsolate.
     await _generateAndAddNewChapter(novel);
   }
 
@@ -534,28 +493,25 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   Future<void> _generateAndAddNewChapter(Novel novel, {bool finalChapter = false}) async {
     AppLogger.info(">>> _generateAndAddNewChapter appelé. Novel ID: ${novel.id}, Chapitres: ${novel.chapters.length}, finalChapter: $finalChapter", tag: "NovelReaderPage");
 
-    if (!mounted) return; // Vérification précoce
+    if (!mounted) return;
 
     setState(() {
       _isGeneratingNextChapter = true;
-      _chapterStream = null; // Réinitialiser le stream
+      _chapterStream = null;
     });
 
     try {
       AppLogger.info(">>> Appel de AIService.preparePrompt depuis _generateAndAddNewChapter...", tag: "NovelReaderPage");
 
       final prompt = await AIService.preparePrompt(
-        novel: novel, // Passer l'objet novel actuel
+        novel: novel,
         isFirstChapter: novel.chapters.isEmpty,
         isFinalChapter: finalChapter,
       );
       AppLogger.success(">>> AIService.preparePrompt terminé avec succès dans _generateAndAddNewChapter.", tag: "NovelReaderPage");
 
-      // Log détaillé du prompt (utile pour le débogage)
-      AppLogger.info("================ PROMPT FINAL ENVOYÉ À L'IA ================", tag: "NovelReaderPage");
-      // Attention: Ne pas logger des prompts trop longs en production
       if (kDebugMode) {
-          debugPrint(prompt); // Utiliser debugPrint pour les logs potentiellement longs
+          debugPrint(prompt);
       } else {
            AppLogger.info("Prompt généré (longueur: ${prompt.length})", tag: "NovelReaderPage");
       }
@@ -568,23 +524,21 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
       final stream = AIService.streamChapterFromPrompt(
         prompt: prompt,
-        modelId: novel.modelId, // Utiliser le modelId du novel actuel
+        modelId: novel.modelId,
         language: novel.language,
       );
 
-      // Mettre à jour l'état uniquement si le widget est toujours monté
       if (mounted) {
          setState(() => _chapterStream = stream);
       }
 
     } catch (e, stackTrace) {
       AppLogger.error("❌ Erreur DANS _generateAndAddNewChapter (probablement pendant preparePrompt)", error: e, stackTrace: stackTrace, tag: "NovelReaderPage");
-      _handleGenerationError(e); // Gérer l'erreur (met à jour l'état, affiche message)
+      _handleGenerationError(e);
     }
   }
 
 
-  // ✅ CORRIGÉ : Utilise la nouvelle méthode `addChapter` du provider.
   Future<void> _finalizeChapterGeneration(Novel novel, String fullText) async {
      AppLogger.info("Finalizing chapter generation. Received text length: ${fullText.length}", tag: "NovelReaderPage");
     if (fullText.trim().isEmpty) {
@@ -592,7 +546,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       _handleGenerationError(ApiServerException("L'écrivain a renvoyé un chapitre vide. Réessayez.", statusCode: null));
       return;
     }
-    // Vérifier si le widget est toujours monté avant de continuer
     if (!mounted) {
          AppLogger.warning("Widget non monté lors de la finalisation du chapitre.", tag: "NovelReaderPage");
         return;
@@ -600,49 +553,33 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     final newChapter = AIService.extractTitleAndContent(
       fullText,
-      novel.chapters.length, // L'index du nouveau chapitre sera la taille actuelle
+      novel.chapters.length,
       novel.chapters.isEmpty,
-      false, // Supposer que ce n'est pas le chapitre final (géré par le bouton dédié)
+      false,
       AIPrompts.getPromptsFor(novel.language),
     );
 
     try {
-        // Appel à la méthode optimisée du provider pour ajouter le chapitre
         await ref.read(novelsProvider.notifier).addChapter(novel.id, newChapter);
         AppLogger.success("Nouveau chapitre ajouté au provider: ${newChapter.title}", tag: "NovelReaderPage");
 
-        // --- Déplacement de la logique de mise à jour des plans ici ---
-        if (!mounted) return; // Re-vérifier après l'appel asynchrone
+        if (!mounted) return;
 
-        // Re-lire l'état mis à jour du Novel depuis le provider
-        // C'est crucial car `addChapter` a modifié l'état
         final updatedNovelState = await ref.read(novelsProvider.future);
         final updatedNovel = updatedNovelState.firstWhereOrNull((n) => n.id == novel.id);
 
         if (updatedNovel == null) {
              AppLogger.error("Impossible de retrouver le novel mis à jour après ajout du chapitre.", tag: "NovelReaderPage");
-             // Gérer l'erreur? Pour l'instant on continue la synchro
         } else {
-             // Déclencher la mise à jour du roadmap (passé) si nécessaire
-             // Passer le contexte actuel et le novel mis à jour
-            // Ne pas await ici pour ne pas bloquer l'UI, le service gère l'affichage des snackbars
              Future microtask = ref.read(roadmapServiceProvider).triggerRoadmapUpdateIfNeeded(updatedNovel, context);
-
-             // Déclencher la mise à jour du plan directeur (futur) si nécessaire
-             // Ne pas await ici non plus
              Future microtask2 = ref.read(roadmapServiceProvider).triggerFutureOutlineUpdateIfNeeded(updatedNovel, context);
         }
-        // --- Fin du déplacement ---
 
-
-        // Ajouter à la file de synchronisation backend
         final syncTask = SyncTask(
           action: 'add',
           novelId: novel.id,
           content: newChapter.content,
-          // L'index pour le backend pourrait être basé sur la longueur *avant* l'ajout
-          // ou l'ID si le backend le gère. Utilisons la longueur *après* ajout (nouvel index).
-          chapterIndex: novel.chapters.length, // L'index du chapitre ajouté est la nouvelle longueur - 1
+          chapterIndex: novel.chapters.length,
         );
         await ref.read(syncServiceProvider).addTask(syncTask);
          AppLogger.info("Tâche de synchronisation 'add' ajoutée pour le nouveau chapitre.", tag: "NovelReaderPage");
@@ -651,18 +588,13 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         _showSnackbarMessage('Chapitre "${newChapter.title}" ajouté.', Colors.green, durationSeconds: 5);
 
 
-        // Mise à jour de l'état UI et navigation vers la nouvelle page
         setState(() {
           _isGeneratingNextChapter = false;
           _chapterStream = null;
-          // _currentPage est mis à jour par le listener de PageController quand on navigue
         });
 
-        // Naviguer vers la nouvelle page ajoutée
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _pageController.hasClients) {
-            // Aller à la dernière page (le chapitre nouvellement ajouté)
-             // Re-calculer la longueur au cas où l'état aurait changé
             final currentNovels = ref.read(novelsProvider).value ?? [];
             final currentNovel = currentNovels.firstWhereOrNull((n) => n.id == novel.id);
             final lastPageIndex = (currentNovel?.chapters.length ?? 1) - 1;
@@ -684,14 +616,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     } catch (e, stackTrace) {
         AppLogger.error("Erreur lors de la finalisation/sauvegarde du chapitre", error: e, stackTrace: stackTrace, tag: "NovelReaderPage");
-        // Gérer l'erreur - Afficher un message et réinitialiser l'état de génération
         _handleGenerationError(ApiException("Erreur lors de la sauvegarde du chapitre: ${e.toString()}"));
     }
   }
 
 
   void _handleGenerationError(Object error) {
-    // S'assurer que le widget est toujours monté
     if (!mounted) {
          AppLogger.warning("handleGenerationError appelé mais widget non monté.", tag: "NovelReaderPage");
         return;
@@ -702,16 +632,16 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     setState(() {
       _isGeneratingNextChapter = false;
-      _chapterStream = null; // S'assurer que l'animation de streaming s'arrête
+      _chapterStream = null;
     });
 
     String message;
     if (error is ApiServerException) {
-      message = error.toString(); // Utiliser le message personnalisé de l'exception
+      message = error.toString();
     } else if (error is ApiConnectionException) {
       message = error.toString();
     } else if (error is ApiException) {
-       message = error.message; // Message générique de l'API
+       message = error.message;
     }
     else {
       message = "Une erreur inattendue est survenue lors de la rédaction.";
@@ -734,7 +664,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // ✅ CORRIGÉ : Utilise la nouvelle méthode `deleteChapter` du provider.
   Future<void> _deleteCurrentChapter(Novel novel) async {
     if (!mounted || novel.chapters.isEmpty || _isGeneratingNextChapter) {
         AppLogger.warning("Suppression annulée: !mounted=${!mounted}, isEmpty=${novel.chapters.isEmpty}, isGenerating=$_isGeneratingNextChapter", tag: "NovelReaderPage");
@@ -742,14 +671,13 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     }
 
     final int chapterIndexToDelete = _currentPage;
-    // Vérification robuste de l'index
     if (chapterIndexToDelete < 0 || chapterIndexToDelete >= novel.chapters.length) {
         AppLogger.error("Tentative de suppression d'un index invalide: $chapterIndexToDelete (total: ${novel.chapters.length})", tag: "NovelReaderPage");
         _showSnackbarMessage("Erreur : Impossible de déterminer quel chapitre supprimer.", Colors.redAccent);
         return;
     }
     final Chapter chapterToDelete = novel.chapters[chapterIndexToDelete];
-    final int chapterNumber = chapterIndexToDelete + 1; // Pour l'affichage utilisateur
+    final int chapterNumber = chapterIndexToDelete + 1;
 
     final bool? confirmDelete = await showDialog<bool>(
       context: context,
@@ -772,18 +700,16 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     AppLogger.info("Demande de suppression confirmée pour le chapitre $chapterIndexToDelete (ID: ${chapterToDelete.id})", tag: "NovelReaderPage");
 
-    // Ajouter la tâche de synchro AVANT de modifier l'état local
     final syncTask = SyncTask(
       action: 'delete_chapter',
       novelId: novel.id,
-      chapterIndex: chapterIndexToDelete, // L'index actuel avant suppression
+      chapterIndex: chapterIndexToDelete,
     );
     await ref.read(syncServiceProvider).addTask(syncTask);
      AppLogger.info("Tâche de synchronisation 'delete_chapter' ajoutée.", tag: "NovelReaderPage");
 
 
     try {
-      // Supprimer la position de scroll enregistrée pour ce chapitre
       if(_prefsLoaded) {
         final key = 'scroll_pos_${widget.novelId}_$chapterIndexToDelete';
         if (_prefs.containsKey(key)) {
@@ -792,28 +718,17 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         }
       }
 
-      // Appel à la méthode optimisée du provider pour supprimer le chapitre de l'état local et Supabase
        AppLogger.info("Appel de novelsProvider.notifier.deleteChapter...", tag: "NovelReaderPage");
       await ref.read(novelsProvider.notifier).deleteChapter(novel.id, chapterToDelete.id);
        AppLogger.success("Chapitre supprimé avec succès via le provider.", tag: "NovelReaderPage");
 
       _showSnackbarMessage('Chapitre "${chapterToDelete.title}" supprimé.', Colors.green);
 
-      // Important : Il n'est pas nécessaire de gérer manuellement la navigation ici.
-      // Le PageView.builder se reconstruira avec la nouvelle liste de chapitres
-      // et ajustera automatiquement l'affichage. Le listener _onPageChanged
-      // mettra à jour _currentPage si l'index actuel devient invalide.
-      // On force juste une reconstruction via invalidateSelf si besoin (déjà fait par le provider)
-      // ref.invalidate(novelsProvider); // Normalement pas nécessaire car deleteChapter met à jour l'état
-
-
     } catch (e, stackTrace) {
       AppLogger.error("Erreur critique lors de la suppression du chapitre", error: e, stackTrace: stackTrace, tag: "NovelReaderPage");
        if (mounted) {
          _showSnackbarMessage("Erreur critique lors de la suppression : ${e.toString()}", Colors.redAccent);
        }
-       // Que faire ici ? L'état local peut être désynchronisé de Supabase.
-       // Invalider le provider pour forcer un rechargement ?
        ref.invalidate(novelsProvider);
     }
   }
@@ -824,9 +739,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       setState(() => _showUIElements = !_showUIElements);
       if(!_showUIElements) {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        // Cacher aussi la zone de traduction si elle est visible
         _selectionTimer?.cancel();
-         // Vérifier `mounted` à nouveau avant `setState` dans ce bloc
          if (mounted) {
              setState(() { _selectedWord = ''; _translationResult = null; _isLoadingTranslation = false; });
          }
@@ -838,19 +751,17 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   void _handleTapToToggleUI(TapUpDetails details) {
-    // Vérifier si le widget est toujours monté
     if (!mounted) return;
 
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return; // Ne rien faire si le RenderBox n'est pas trouvé
+    if (renderBox == null) return;
 
     final Offset localPosition = renderBox.globalToLocal(details.globalPosition);
     final double bottomSafeArea = MediaQuery.of(context).padding.bottom;
-    final double navigationBarHeight = kBottomNavigationBarHeight + 10; // Barre de nav + marge
-    final double translationAreaHeight = (_selectedWord.isNotEmpty || _isLoadingTranslation) ? 120 : 0; // Estimation hauteur zone traduction + padding
+    final double navigationBarHeight = kBottomNavigationBarHeight + 10;
+    final double translationAreaHeight = (_selectedWord.isNotEmpty || _isLoadingTranslation) ? 120 : 0;
     final double deadZoneHeight = bottomSafeArea + navigationBarHeight + translationAreaHeight;
 
-    // S'assurer que localPosition.dy est valide
     if (localPosition.dy < renderBox.size.height - deadZoneHeight) {
       _toggleUI();
     } else {
@@ -862,9 +773,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   void _showFontSizeDialog() {
     showDialog(
       context: context,
-      barrierDismissible: true, // Permettre de fermer en cliquant à l'extérieur
+      barrierDismissible: true,
       builder: (BuildContext context) {
-        // Utiliser StatefulBuilder pour que seul le contenu du dialogue se mette à jour
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -874,24 +784,20 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.remove),
-                    // Désactiver si la taille minimale est atteinte
                     onPressed: _currentFontSize <= 10.0 ? null : () {
-                      // Mettre à jour l'état global ET l'état local du dialogue
-                      _decreaseFontSize(); // Met à jour l'état du widget principal
-                      setDialogState(() {}); // Redessine le dialogue
+                      _decreaseFontSize();
+                      setDialogState(() {});
                     },
                   ),
-                  // Afficher la taille actuelle
                   Text(
                     _currentFontSize.toStringAsFixed(1),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   IconButton(
                     icon: const Icon(Icons.add),
-                    // Désactiver si la taille maximale est atteinte
                      onPressed: _currentFontSize >= 50.0 ? null : () {
-                      _increaseFontSize(); // Met à jour l'état du widget principal
-                      setDialogState(() {}); // Redessine le dialogue
+                      _increaseFontSize();
+                      setDialogState(() {});
                     },
                   ),
                 ],
@@ -913,12 +819,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   void _increaseFontSize() {
-    // Vérifier mounted avant setState
     if (!mounted) return;
     setState(() {
       _currentFontSize = (_currentFontSize + 1.0).clamp(10.0, 50.0);
     });
-    _saveFontSizePreference(_currentFontSize); // Sauvegarder la préférence
+    _saveFontSizePreference(_currentFontSize);
   }
 
   void _decreaseFontSize() {
@@ -929,69 +834,191 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     _saveFontSizePreference(_currentFontSize);
   }
 
-  // ✅ FONCTION SUPPRIMÉE : _showFutureOutlineDialog
-  // ✅ FONCTION SUPPRIMÉE : _regenerateFutureOutline
+  // --- CORRECTION : La fonction retourne maintenant un Future<bool> ---
+  Future<bool> _saveFutureOutline(Novel novel) async {
+    if (!mounted) return false;
 
+    final newOutline = _futureOutlineController.text.trim();
+    if (newOutline == (novel.futureOutline ?? '')) {
+      // Pas de changement, on quitte le mode édition. C'est un "succès".
+      return true;
+    }
 
+    AppLogger.info("Sauvegarde du nouveau plan directeur...", tag: "NovelReaderPage");
+    final updatedNovel = novel.copyWith(
+      futureOutline: newOutline,
+      updatedAt: DateTime.now(),
+    );
+
+    try {
+      await ref.read(novelsProvider.notifier).updateNovel(updatedNovel);
+      _showSnackbarMessage("Plan directeur mis à jour.", Colors.green);
+      return true; // Succès
+    } catch (e) {
+      AppLogger.error("Erreur sauvegarde plan directeur", error: e, tag: "NovelReaderPage");
+      _showSnackbarMessage("Erreur lors de la sauvegarde du plan.", Colors.redAccent);
+      return false; // Échec
+    }
+  }
+
+  // --- CORRECTION : La fenêtre de dialogue écoute maintenant les changements du provider ---
   void _showNovelInfoSheet(Novel novel) {
+    _futureOutlineController.text = novel.futureOutline ?? '';
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-          child: DefaultTabController(
-            length: 2, // Garder 2 onglets : Spécifications et Fiche de route (passé)
-            child: AlertDialog(
-              title: const Text("Détails de l'Intrigue"),
-              contentPadding: const EdgeInsets.only(top: 20.0),
-              content: SizedBox(
-                width: 500, // Ajuster selon besoin
-                height: 350, // Ajuster selon besoin
-                child: Column(
-                  children: [
-                    const TabBar(
-                      tabs: [
-                        Tab(text: "Spécifications"),
-                        Tab(text: "Fiche de route (Passé)"), // Renommer pour clarifier
-                      ],
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          // Onglet Spécifications (inchangé)
-                          _buildInfoTabContent(
-                            context,
-                            children: [
-                              SelectableText(
-                                novel.specifications.isNotEmpty
-                                    ? novel.specifications
-                                    : 'Aucune spécification particulière.',
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
-                                textAlign: TextAlign.justify,
-                              )
-                            ],
-                          ),
-                          // Onglet Fiche de route (Passé)
-                          _buildInfoTabContent(
-                            context,
-                            children: [
-                              SelectableText(
-                                // Afficher roadMap (le résumé du passé)
-                                novel.roadMap ?? "La fiche de route (résumé du passé) sera générée après quelques chapitres.",
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
-                                textAlign: TextAlign.justify,
-                              ),
-                            ],
-                          ),
+        return Consumer(builder: (context, ref, child) {
+          final isWriterMode = ref.watch(writerModeProvider);
+          // On écoute le provider pour avoir la version la plus à jour du roman
+          final asyncNovels = ref.watch(novelsProvider);
+          final Novel? currentNovel = asyncNovels.when(
+            data: (novels) => novels.firstWhereOrNull((n) => n.id == widget.novelId),
+            loading: () => novel, // Fallback pendant le chargement
+            error: (err, stack) => novel, // Fallback en cas d'erreur
+          );
+
+          if (currentNovel == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            });
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+            child: DefaultTabController(
+              length: isWriterMode ? 3 : 2,
+              child: AlertDialog(
+                title: const Text("Détails de l'Intrigue"),
+                contentPadding: const EdgeInsets.only(top: 20.0),
+                content: SizedBox(
+                  width: 500,
+                  height: 400,
+                  child: Column(
+                    children: [
+                      TabBar(
+                        isScrollable: true,
+                        tabs: [
+                          const Tab(text: "Spécifications"),
+                          const Tab(text: "Fiche de route (Passé)"),
+                          if (isWriterMode)
+                            const Tab(text: "Plan Directeur (Futur)"),
                         ],
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: TabBarView(
+                          children: [
+                            _buildInfoTabContent(
+                              context,
+                              children: [
+                                SelectableText(
+                                  currentNovel.specifications.isNotEmpty
+                                      ? currentNovel.specifications
+                                      : 'Aucune spécification particulière.',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
+                                  textAlign: TextAlign.justify,
+                                )
+                              ],
+                            ),
+                            _buildInfoTabContent(
+                              context,
+                              children: [
+                                SelectableText(
+                                  currentNovel.roadMap ?? "La fiche de route (résumé du passé) sera générée après quelques chapitres.",
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
+                                  textAlign: TextAlign.justify,
+                                ),
+                              ],
+                            ),
+                            if (isWriterMode)
+                              _buildFutureOutlineTab(currentNovel),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                actions: <Widget>[ TextButton(child: const Text('Fermer'), onPressed: () => Navigator.of(context).pop())],
               ),
-              actions: <Widget>[ TextButton(child: const Text('Fermer'), onPressed: () => Navigator.of(context).pop())],
             ),
-          ),
+          );
+        });
+      },
+    );
+  }
+
+  // --- CORRECTION : La logique de sauvegarde met à jour l'état du dialogue ---
+  Widget _buildFutureOutlineTab(Novel novel) {
+    return StatefulBuilder(
+      builder: (BuildContext context, StateSetter setDialogState) {
+        final theme = Theme.of(context);
+        return Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: _isEditingOutline
+                    ? TextField(
+                        controller: _futureOutlineController,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: "Décrivez les prochains chapitres...",
+                        ),
+                      )
+                    : SelectableText(
+                        // On utilise le 'novel' passé en paramètre, qui est mis à jour par le Consumer parent
+                        novel.futureOutline?.isNotEmpty == true
+                            ? novel.futureOutline!
+                            : "Aucun plan directeur (futur) n'a été défini ou généré.",
+                        style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
+                        textAlign: TextAlign.justify,
+                      ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (_isEditingOutline)
+                    TextButton(
+                      child: const Text('Annuler'),
+                      onPressed: () {
+                        setDialogState(() {
+                          _isEditingOutline = false;
+                          _futureOutlineController.text = novel.futureOutline ?? '';
+                        });
+                      },
+                    ),
+                  IconButton(
+                    icon: Icon(_isEditingOutline ? Icons.check : Icons.edit_outlined),
+                    tooltip: _isEditingOutline ? 'Sauvegarder le plan' : 'Modifier le plan',
+                    onPressed: () {
+                      if (_isEditingOutline) {
+                        _saveFutureOutline(novel).then((success) {
+                           if (success && mounted) {
+                             // Pas besoin de recharger les données, le Consumer s'en charge.
+                             // On change juste le mode du dialogue.
+                             setDialogState((){
+                               _isEditingOutline = false;
+                             });
+                           }
+                        });
+                      } else {
+                        setDialogState(() => _isEditingOutline = true);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
@@ -1008,7 +1035,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // Fonction pour construire les TextSpans (inchangée)
   List<TextSpan> _buildFormattedTextSpans(String text, TextStyle baseStyle) {
     String processedText = text.replaceAll('—', ', ').replaceAll(',,', ',');
 
@@ -1028,7 +1054,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     return spans;
   }
 
-  // Widget _buildChapterReader (inchangé dans sa logique principale)
   Widget _buildChapterReader(Chapter chapter, int index, Novel novel) {
     final baseStyle = _getBaseTextStyle();
 
@@ -1040,22 +1065,17 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
     final contentStyle = baseStyle.copyWith(height: 1.7);
 
-    // Récupérer ou créer le ScrollController pour cette page
     final controller = _scrollControllers.putIfAbsent(index, () {
       final newController = ScrollController();
        AppLogger.info("Creating ScrollController for page $index", tag: "NovelReaderPage");
-       // Charger la position après la création et l'attachement potentiel
       _loadAndJumpToScrollPosition(index, newController);
       return newController;
     });
 
-    // S'assurer que le listener est attaché si c'est la page actuelle
      if (index == _currentPage && controller.hasClients && !controller.hasListeners) {
           AppLogger.info("Re-attaching scroll listener to controller for page $index during build", tag: "NovelReaderPage");
          controller.addListener(_updateScrollProgress);
      } else if (index != _currentPage && controller.hasListeners) {
-          // Détacher le listener si ce n'est pas la page actuelle (sécurité)
-          // Normalement géré par _attachScrollListenerToCurrentPage
            try {
               controller.removeListener(_updateScrollProgress);
                AppLogger.info("Detached listener from non-current page $index during build", tag: "NovelReaderPage");
@@ -1078,14 +1098,10 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           try { if (selection.start >= 0 && selection.end <= fullRenderedText.length && selection.start < selection.end) { selectedText = fullRenderedText.substring(selection.start, selection.end).trim(); } } catch (e) { AppLogger.error("Erreur substring", error: e, tag: "NovelReaderPage"); selectedText = ''; }
 
           bool isValidForLookup = selectedText.isNotEmpty && selectedText != chapter.title.trim() && selectedText.length <= 50 && !selectedText.contains('\n');
-           // Correction : Vérifier si la langue est Japonais avant de déclencher
           if (isValidForLookup && novel.language == 'Japonais') {
             _selectionTimer?.cancel();
-            // Appeler _triggerReadingAndTranslation uniquement si monté
             if (mounted) { _triggerReadingAndTranslation(selectedText); }
           } else {
-             // Si la sélection n'est pas valide pour la recherche ou si ce n'est pas Japonais,
-             // cacher la zone de traduction si elle est visible.
             if ((_selectedWord.isNotEmpty || _isLoadingTranslation || _translationResult != null) && mounted) {
               setState(() {
                 _selectedWord = '';
@@ -1095,7 +1111,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             }
           }
         } else if (cause == SelectionChangedCause.tap || cause == SelectionChangedCause.keyboard) {
-            // Cacher la zone de traduction sur un simple tap ou action clavier
             if ((_selectedWord.isNotEmpty || _isLoadingTranslation || _translationResult != null) && mounted) {
               setState(() {
                 _selectedWord = '';
@@ -1106,25 +1121,22 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         }
       },
       cursorColor: Theme.of(context).colorScheme.primary,
-      selectionControls: MaterialTextSelectionControls(), // Contrôles de sélection standards
+      selectionControls: MaterialTextSelectionControls(),
     );
 
-    // Ajuster le padding en fonction de la visibilité de l'UI
     final bottomPadding = _showUIElements ? 120.0 : 60.0;
 
-      // Utiliser RepaintBoundary pour optimiser le rendu si le contenu est complexe
      return RepaintBoundary(
         child: Container(
-         color: _getCurrentBackgroundColor(), // Couleur de fond
-         // Utiliser un Key pour aider Flutter à identifier le widget quand on change de page
+         color: _getCurrentBackgroundColor(),
          key: ValueKey("chapter_${novel.id}_$index"),
          child: SingleChildScrollView(
            controller: controller,
            padding: EdgeInsets.fromLTRB(
-              20.0, // Gauche
-              MediaQuery.of(context).padding.top + kToolbarHeight + 24.0, // Haut (safe area + app bar + marge)
-              20.0, // Droite
-              bottomPadding // Bas (variable selon UI)
+              20.0,
+              MediaQuery.of(context).padding.top + kToolbarHeight + 24.0,
+              20.0,
+              bottomPadding
            ),
            child: textContent,
          ),
@@ -1134,7 +1146,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
 
-  // Widget _buildChapterEditor (inchangé)
   Widget _buildChapterEditor() {
     final baseStyle = _getBaseTextStyle();
     final theme = Theme.of(context);
@@ -1163,12 +1174,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             TextField(
               controller: _editingContentController,
               style: baseStyle.copyWith(height: 1.7),
-              maxLines: null, // Permet plusieurs lignes
+              maxLines: null,
               keyboardType: TextInputType.multiline,
               decoration: InputDecoration(
                 hintText: 'Contenu du chapitre...',
                 hintStyle: baseStyle.copyWith(color: hintColor),
-                border: InputBorder.none, // Pas de bordure visible
+                border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
               ),
@@ -1179,7 +1190,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // Widget _buildTranslationArea (inchangé)
   Widget _buildTranslationArea(ThemeData theme) {
     final translationBg = theme.colorScheme.surfaceContainerHighest;
     final textColor = _getCurrentTextColor();
@@ -1207,13 +1217,12 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           top: 16.0,
           left: 20.0,
           right: 20.0,
-          bottom: max(16.0, MediaQuery.of(context).padding.bottom + 4), // Prend en compte la safe area du bas
+          bottom: max(16.0, MediaQuery.of(context).padding.bottom + 4),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min, // Prend la hauteur minimum nécessaire
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Titre avec le mot sélectionné
             Text(
               'Infos pour : "${_selectedWord.length > 30 ? "${_selectedWord.substring(0, 30)}..." : _selectedWord}"',
               style: titleStyle,
@@ -1222,7 +1231,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             ),
             const SizedBox(height: 12),
 
-            // Affichage du chargement ou des résultats/erreurs
             _isLoadingTranslation
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1233,27 +1241,24 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                     ],
                     ),
                   )
-                : Column( // Affichage des résultats ou erreurs
+                : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Lecture Hiragana (si applicable)
                       if (hasReadingInfo) ...[
                         Text("Lecture Hiragana :", style: labelStyle),
                         const SizedBox(height: 3),
                         readingError != null
-                            ? SelectableText(readingError, style: errorStyle) // Afficher l'erreur de lecture
-                            : SelectableText(reading ?? '(Non trouvée)', style: valueStyle), // Afficher la lecture ou fallback
-                        if (hasTranslationInfo) const SizedBox(height: 10), // Espace si traduction suit
+                            ? SelectableText(readingError, style: errorStyle)
+                            : SelectableText(reading ?? '(Non trouvée)', style: valueStyle),
+                        if (hasTranslationInfo) const SizedBox(height: 10),
                       ],
-                      // Traduction Français
                       if (hasTranslationInfo) ...[
                         Text("Traduction Français :", style: labelStyle),
                         const SizedBox(height: 3),
                         translationError != null
-                            ? SelectableText(translationError, style: errorStyle) // Afficher l'erreur de traduction
-                            : SelectableText(translation ?? '(Non trouvée)', style: valueStyle), // Afficher la traduction ou fallback
+                            ? SelectableText(translationError, style: errorStyle)
+                            : SelectableText(translation ?? '(Non trouvée)', style: valueStyle),
                       ],
-                      // Message si aucune info n'est disponible
                       if (!hasAnyInfo)
                         Text("(Aucune information trouvée)", style: valueStyle?.copyWith(fontStyle: FontStyle.italic, color: textColor.withAlpha((255 * 0.6).round()))),
                     ],
@@ -1265,7 +1270,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
 
-  // Widget _buildEmptyState (inchangé)
   Widget _buildEmptyState(ThemeData theme) {
       return Center(
       child: Padding(
@@ -1292,7 +1296,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // Widget _buildChapterNavigation (inchangé)
   Widget _buildChapterNavigation({
     required ThemeData theme,
     required Color backgroundColor,
@@ -1304,7 +1307,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }) {
     bool canGoBack = _currentPage > 0;
     bool hasChapters = novel.chapters.isNotEmpty;
-    // Correction : s'assurer que _currentPage est valide avant de comparer
     bool isLastPage = hasChapters && _currentPage >= 0 && _currentPage == novel.chapters.length - 1;
     bool navigationDisabled = isGenerating || !hasChapters;
 
@@ -1312,36 +1314,33 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     if (!hasChapters) {
       pageText = 'Pas de chapitres';
     } else if (_currentPage >= 0 && _currentPage < novel.chapters.length) {
-      // Affichage 1-based pour l'utilisateur
       pageText = 'Chapitre ${_currentPage + 1} / ${novel.chapters.length}';
     } else {
-       // Cas où _currentPage pourrait être invalide (ex: après suppression)
       pageText = 'Chargement...';
     }
 
 
     return Material(
-      color: backgroundColor, // Fond de la barre de navigation
+      color: backgroundColor,
       child: Padding(
         padding: EdgeInsets.only(
           left: 8,
           right: 8,
           top: 4,
-          bottom: max(8.0, MediaQuery.of(context).padding.bottom) // Prend en compte la safe area
+          bottom: max(8.0, MediaQuery.of(context).padding.bottom)
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Bouton Précédent
             IconButton(
               icon: const Icon(Icons.arrow_back_ios_new),
               tooltip: 'Chapitre précédent',
               iconSize: 20,
               color: canGoBack && !navigationDisabled ? primaryColor : disabledColor,
-              disabledColor: disabledColor, // Assure que la couleur désactivée est correcte
+              disabledColor: disabledColor,
               onPressed: canGoBack && !navigationDisabled
                   ? () {
-                      _selectionTimer?.cancel(); // Annuler la sélection de texte
+                      _selectionTimer?.cancel();
                       if (_pageController.hasClients) {
                         _pageController.previousPage(
                           duration: const Duration(milliseconds: 300),
@@ -1349,20 +1348,18 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                         );
                       }
                     }
-                  : null, // Désactivé si on ne peut pas reculer
+                  : null,
             ),
-            // Indicateur de page
-            Flexible( // Pour gérer les titres longs
+            Flexible(
               child: Text(
                 pageText,
                 style: theme.textTheme.labelLarge?.copyWith(color: textColor),
-                overflow: TextOverflow.ellipsis, // Points de suspension si trop long
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            // Bouton Suivant ou Ajout/Génération
             isGenerating
-                ? const SizedBox( // Indicateur de chargement pendant la génération
-                    width: 48, // Largeur fixe pour alignement
+                ? const SizedBox(
+                    width: 48,
                     height: 24,
                     child: Center(
                       child: SizedBox(
@@ -1372,10 +1369,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                       )
                     ),
                   )
-                 // Si c'est la dernière page (ou s'il n'y a pas de chapitre), montrer le menu d'ajout
                 : (isLastPage || !hasChapters)
                     ? _buildAddChapterMenu(theme, novel)
-                    // Sinon, montrer le bouton Suivant
                     : IconButton(
                             icon: const Icon(Icons.arrow_forward_ios),
                             tooltip: 'Chapitre suivant',
@@ -1392,7 +1387,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                       );
                                     }
                                   }
-                                : null, // Désactivé si on ne peut pas avancer
+                                : null,
                           )
 
           ],
@@ -1402,20 +1397,18 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   }
 
 
-  // Widget _buildAddChapterMenu (inchangé)
   Widget _buildAddChapterMenu(ThemeData theme, Novel novel) {
     final iconColor = _isGeneratingNextChapter ? theme.disabledColor : theme.colorScheme.primary;
-    // Déterminer la couleur du menu popup en fonction du thème
     Color popupMenuColor;
     Color popupMenuTextColor;
     switch (Theme.of(context).brightness) {
       case Brightness.dark:
-        popupMenuColor = theme.colorScheme.surfaceContainerHighest; // Plus sombre en thème sombre
+        popupMenuColor = theme.colorScheme.surfaceContainerHighest;
         popupMenuTextColor = theme.colorScheme.onSurface;
         break;
       case Brightness.light:
       default:
-        popupMenuColor = theme.colorScheme.surfaceContainerHigh; // Plus clair en thème clair
+        popupMenuColor = theme.colorScheme.surfaceContainerHigh;
         popupMenuTextColor = theme.colorScheme.onSurface;
         break;
     }
@@ -1425,12 +1418,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     return PopupMenuButton<String>(
       icon: Icon(Icons.add_circle_outline, color: iconColor),
       tooltip: hasChapters ? 'Options du chapitre suivant' : 'Générer le premier chapitre',
-      offset: const Offset(0, -120), // Positionner le menu au-dessus du bouton
+      offset: const Offset(0, -120),
       color: popupMenuColor,
       enabled: isMenuEnabled,
-      onOpened: () { if (!_showUIElements) _toggleUI(); }, // Afficher l'UI si elle est cachée
+      onOpened: () { if (!_showUIElements) _toggleUI(); },
       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-        // Option différente si c'est le premier chapitre ou les suivants
         if(hasChapters)
           PopupMenuItem<String>(
             value: 'next',
@@ -1441,11 +1433,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                 'Générer chapitre suivant',
                 style: theme.textTheme.bodyMedium?.copyWith(color: isMenuEnabled ? popupMenuTextColor : theme.disabledColor)
               ),
-              contentPadding: EdgeInsets.zero, // Compact
+              contentPadding: EdgeInsets.zero,
               dense: true,
             ),
           )
-        else // S'il n'y a pas de chapitres
+        else
           PopupMenuItem<String>(
             value: 'first',
             enabled: isMenuEnabled,
@@ -1460,7 +1452,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
             ),
           ),
 
-        // Option pour générer le chapitre final (seulement si des chapitres existent)
         if (hasChapters)
           PopupMenuItem<String>(
             value: 'final',
@@ -1477,9 +1468,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           ),
       ],
       onSelected: (String result) {
-        if (!mounted) return; // Vérifier avant d'agir
+        if (!mounted) return;
         if (result == 'next' || result == 'first') {
-          // Relire l'état actuel du novel avant de générer
            final currentNovel = ref.read(novelsProvider).value?.firstWhereOrNull((n) => n.id == novel.id);
            if (currentNovel != null) {
               _guardedGenerateChapter(currentNovel);
@@ -1505,7 +1495,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     final theme = Theme.of(context);
     final currentBackgroundColor = _getCurrentBackgroundColor();
 
-    // Surveiller l'état des romans
+    final isWriterMode = ref.watch(writerModeProvider);
+
     final novelsAsyncValue = ref.watch(novelsProvider);
 
     return novelsAsyncValue.when(
@@ -1515,10 +1506,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
          return Scaffold(backgroundColor: currentBackgroundColor, body: Center(child: Text('Erreur: $err')));
       },
       data: (novels) {
-        // Trouver le roman spécifique par ID
         final novel = novels.firstWhereOrNull((n) => n.id == widget.novelId);
 
-        // Gérer le cas où le roman n'est pas trouvé (supprimé ?)
         if (novel == null) {
           return Scaffold(
             backgroundColor: currentBackgroundColor,
@@ -1527,89 +1516,94 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
           );
         }
 
-        // Définir les couleurs pour la barre de navigation
         Color navBarBgColor = theme.colorScheme.surfaceContainer;
         Color navBarPrimaryColor = theme.colorScheme.primary;
         Color navBarTextColor = theme.colorScheme.onSurfaceVariant;
         Color navBarDisabledColor = theme.disabledColor;
 
         final bool isGenerating = _isGeneratingNextChapter;
-        // Vérifier si la page actuelle est valide pour la suppression/édition
          final bool isCurrentPageValid = _currentPage >= 0 && _currentPage < novel.chapters.length;
         final bool canDeleteChapter = novel.chapters.isNotEmpty && !isGenerating && isCurrentPageValid;
         final bool canEditChapter = novel.chapters.isNotEmpty && !isGenerating && isCurrentPageValid;
 
-        // Déterminer si la zone de traduction doit être affichée
         final bool shouldShowTranslationArea = _selectedWord.isNotEmpty && (_isLoadingTranslation || _translationResult != null);
 
-        // PopScope gère le bouton retour du système
         return PopScope(
-          canPop: !isGenerating, // Empêcher de quitter pendant la génération
+          canPop: !isGenerating,
           onPopInvoked: (bool didPop) {
-            if (!didPop) { // Si la navigation retour a été empêchée
+            if (!didPop) {
               if (isGenerating && mounted) {
                 _showSnackbarMessage("Veuillez attendre la fin de la génération en cours.", Colors.orangeAccent);
               }
-            } else { // Si la navigation a réussi (retour autorisé)
-              _saveCurrentScrollPosition(); // Sauvegarder la position avant de quitter
-              SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); // Restaurer l'UI système
+            } else {
+              _saveCurrentScrollPosition();
+              SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
             }
           },
           child: Scaffold(
-            extendBodyBehindAppBar: true, // Le corps passe sous l'AppBar transparente
+            extendBodyBehindAppBar: true,
             backgroundColor: currentBackgroundColor,
             appBar: PreferredSize(
-              preferredSize: const Size.fromHeight(kToolbarHeight), // Hauteur standard AppBar
-              child: _isEditing // Afficher l'AppBar d'édition ou de lecture
-                ? AppBar( // AppBar pour le mode édition
+              preferredSize: const Size.fromHeight(kToolbarHeight),
+              child: _isEditing
+                ? AppBar(
                     backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
                     foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
                     title: Text('Modifier le chapitre', style: Theme.of(context).appBarTheme.titleTextStyle),
                     leading: IconButton(
                       icon: const Icon(Icons.close),
                       tooltip: 'Annuler les modifications',
-                      onPressed: _cancelEditing, // Annuler
+                      onPressed: _cancelEditing,
                     ),
                     actions: [
                       IconButton(
                         icon: const Icon(Icons.check),
                         tooltip: 'Sauvegarder les modifications',
-                        onPressed: () => _saveEdits(novel), // Sauvegarder
+                        onPressed: () => _saveEdits(novel),
                       ),
                     ],
                   )
-                : AnimatedOpacity( // AppBar pour le mode lecture (avec fondu)
-                    opacity: _showUIElements ? 1.0 : 0.0, // Visible ou non selon _showUIElements
+                : AnimatedOpacity(
+                    opacity: _showUIElements ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 200),
-                    child: IgnorePointer( // Ignorer les clics si invisible
+                    child: IgnorePointer(
                       ignoring: !_showUIElements,
-                      child: ClipRRect( // Pour l'effet de flou
-                        child: BackdropFilter( // Effet de flou
+                      child: ClipRRect(
+                        child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                           child: AppBar(
                             title: Text(novel.title, style: Theme.of(context).appBarTheme.titleTextStyle),
-                            backgroundColor: Theme.of(context).appBarTheme.backgroundColor?.withAlpha((255 * 0.75).round()), // Semi-transparent
+                            backgroundColor: Theme.of(context).appBarTheme.backgroundColor?.withAlpha((255 * 0.75).round()),
                             elevation: 0,
-                            scrolledUnderElevation: 0, // Pas d'ombre au scroll
+                            scrolledUnderElevation: 0,
                             leading: IconButton(
                               icon: const Icon(Icons.arrow_back),
                               tooltip: 'Retour à la bibliothèque',
-                              onPressed: () => Navigator.pop(context), // Retour simple
+                              onPressed: () => Navigator.pop(context),
                             ),
-                            actions: [ // Menu d'options
+                            actions: [
+                              IconButton(
+                                icon: Icon(
+                                  isWriterMode ? Icons.auto_stories_outlined : Icons.edit_note_outlined,
+                                  color: isWriterMode ? theme.colorScheme.secondary : null,
+                                ),
+                                tooltip: isWriterMode ? 'Passer en mode Lecteur' : 'Passer en mode Écrivain',
+                                onPressed: () {
+                                  ref.read(writerModeProvider.notifier).state = !isWriterMode;
+                                  _showSnackbarMessage(
+                                    isWriterMode ? 'Mode Lecteur activé.' : 'Mode Écrivain activé. Le plan est maintenant visible.',
+                                    isWriterMode ? Colors.grey : Colors.blueAccent,
+                                  );
+                                },
+                              ),
                               PopupMenuButton<String>(
                                 icon: const Icon(Icons.more_vert),
                                 tooltip: 'Ouvrir le menu',
                                 onSelected: (value) {
-                                  // Gérer la sélection du menu
                                   switch (value) {
                                     case 'info':
                                       _showNovelInfoSheet(novel);
                                       break;
-                                    // ✅ MODIFICATION : Option 'outline' supprimée
-                                    // case 'outline':
-                                    //   _showFutureOutlineDialog(novel);
-                                    //   break;
                                     case 'edit':
                                       _startEditing(novel);
                                       break;
@@ -1629,14 +1623,9 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                     value: 'info',
                                     child: ListTile(leading: Icon(Icons.info_outline), title: Text('Informations du roman')),
                                   ),
-                                  // ✅ MODIFICATION : Option 'outline' supprimée du menu
-                                  // const PopupMenuItem<String>(
-                                  //   value: 'outline',
-                                  //   child: ListTile(leading: Icon(Icons.compass_calibration_outlined), title: Text('Plan Directeur')),
-                                  // ),
                                   PopupMenuItem<String>(
                                     value: 'edit',
-                                    enabled: canEditChapter, // Activer/désactiver selon l'état
+                                    enabled: canEditChapter,
                                     child: const ListTile(leading: Icon(Icons.edit_outlined), title: Text('Modifier ce chapitre')),
                                   ),
                                   const PopupMenuDivider(),
@@ -1651,7 +1640,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                   const PopupMenuDivider(),
                                   PopupMenuItem<String>(
                                     value: 'delete',
-                                    enabled: canDeleteChapter, // Activer/désactiver selon l'état
+                                    enabled: canDeleteChapter,
                                     child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red.shade300), title: Text('Supprimer ce chapitre', style: TextStyle(color: Colors.red.shade300))),
                                   ),
                                 ],
@@ -1663,29 +1652,26 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                     ),
                   ),
             ),
-            body: Stack( // Empiler le contenu principal et les contrôles en bas
+            body: Stack(
               children: [
-                // Contenu principal (PageView ou indicateur de chargement)
-                Positioned.fill( // Prend tout l'espace disponible
-                  child: GestureDetector( // Détecter les taps pour afficher/cacher l'UI
+                Positioned.fill(
+                  child: GestureDetector(
                     onTapUp: _handleTapToToggleUI,
-                    child: NotificationListener<ScrollNotification>( // Détecter le scroll pour afficher/cacher l'UI
+                    child: NotificationListener<ScrollNotification>(
                       onNotification: (ScrollNotification notification) {
                         if (notification is UserScrollNotification) {
                           final UserScrollNotification userScroll = notification;
                           if (userScroll.direction == ScrollDirection.reverse && _showUIElements) {
-                             // Scrolle vers le bas -> Cacher l'UI
                              _toggleUI();
                           } else if (userScroll.direction == ScrollDirection.forward && !_showUIElements) {
-                             // Scrolle vers le haut -> Afficher l'UI
                              _toggleUI();
                           }
                         }
-                        return false; // Ne pas empêcher le scroll normal
+                        return false;
                       },
-                      child: isGenerating // Afficher l'indicateur de génération ou le PageView
-                          ? _chapterStream == null // Si le stream n'est pas encore prêt
-                              ? Center( // Afficher "consulte le contexte"
+                      child: isGenerating
+                          ? _chapterStream == null
+                              ? Center(
                                   child: Padding(
                                     padding: const EdgeInsets.all(16.0),
                                     child: Column(
@@ -1709,34 +1695,31 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                     ),
                                   ),
                                 )
-                              : Padding( // Si le stream est actif, afficher l'animation
-                                  padding: const EdgeInsets.all(20.0), // Marge autour du texte streamé
+                              : Padding(
+                                  padding: const EdgeInsets.all(20.0),
                                   child: StreamingTextAnimation(
                                     stream: _chapterStream!,
                                     style: _getBaseTextStyle(),
-                                    onDone: (fullText) => _finalizeChapterGeneration(novel, fullText), // Finaliser quand le stream est complet
-                                    onError: (error) => _handleGenerationError(error), // Gérer les erreurs du stream
+                                    onDone: (fullText) => _finalizeChapterGeneration(novel, fullText),
+                                    onError: (error) => _handleGenerationError(error),
                                   ),
                                 )
-                          : !_prefsLoaded // Si les préférences ne sont pas chargées
-                              ? const Center(child: CircularProgressIndicator()) // Afficher chargement initial
-                              : novel.chapters.isEmpty // S'il n'y a pas de chapitres
-                                  ? _buildEmptyState(theme) // Afficher l'état vide
-                                  : PageView.builder( // Afficher les pages des chapitres
-                                      physics: _isEditing ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(), // Bloquer le swipe en mode édition
-                                      // Clé importante pour forcer la reconstruction si le nombre de chapitres change
+                          : !_prefsLoaded
+                              ? const Center(child: CircularProgressIndicator())
+                              : novel.chapters.isEmpty
+                                  ? _buildEmptyState(theme)
+                                  : PageView.builder(
+                                      physics: _isEditing ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
                                       key: ValueKey("${novel.id}_${novel.chapters.length}"),
                                       controller: _pageController,
                                       itemCount: novel.chapters.length,
                                       itemBuilder: (context, index) {
-                                        // Sécurité: vérifier si l'index est valide
                                         if (index >= novel.chapters.length) {
                                            AppLogger.warning("PageView.builder called with invalid index $index (max: ${novel.chapters.length - 1})", tag: "NovelReaderPage");
                                           return Container(color: _getCurrentBackgroundColor(), child: Center(child: Text("Chargement...", style: TextStyle(color: _getCurrentTextColor()))));
                                         }
                                         final chapter = novel.chapters[index];
 
-                                        // Afficher l'éditeur ou le lecteur
                                         if (_isEditing && index == _editingChapterIndex) {
                                           return _buildChapterEditor();
                                         } else {
@@ -1747,38 +1730,33 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                     ),
                   ),
                 ),
-                // Contrôles en bas de l'écran (zone de traduction, barre de progression, navigation)
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: Column(
-                    mainAxisSize: MainAxisSize.min, // Prend la hauteur minimum
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Zone de traduction (animée)
-                      AnimatedSize( // S'anime en hauteur quand elle apparaît/disparaît
+                      AnimatedSize(
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.easeInOut,
-                        child: shouldShowTranslationArea ? _buildTranslationArea(theme) : const SizedBox.shrink(), // Afficher ou non
+                        child: shouldShowTranslationArea ? _buildTranslationArea(theme) : const SizedBox.shrink(),
                       ),
-                      // Barre de progression et navigation (si pas en mode édition)
                       if (!_isEditing)
-                        AnimatedSlide( // Glisse vers le bas pour se cacher
+                        AnimatedSlide(
                           duration: const Duration(milliseconds: 200),
-                          offset: _showUIElements ? Offset.zero : const Offset(0, 2), // Position normale ou décalée vers le bas
+                          offset: _showUIElements ? Offset.zero : const Offset(0, 2),
                           child: Column(
                             children: [
-                              // Barres de progression
                               _buildProgressBars(theme, navBarPrimaryColor, navBarTextColor),
-                              // Barre de navigation entre chapitres
                               _buildChapterNavigation(
                                 theme: theme,
                                 backgroundColor: navBarBgColor,
                                 primaryColor: navBarPrimaryColor,
                                 textColor: navBarTextColor,
                                 disabledColor: navBarDisabledColor,
-                                isGenerating: isGenerating, // État de génération en cours
-                                novel: novel, // Passer le novel actuel
+                                isGenerating: isGenerating,
+                                novel: novel,
                               ),
                             ],
                           ),
@@ -1796,39 +1774,34 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   Widget _buildProgressBars(ThemeData theme, Color primaryColor, Color textColor) {
-    // Lire une seule fois le novel au début de la construction
     final novel = ref.read(novelsProvider).value?.firstWhereOrNull((n) => n.id == widget.novelId);
-    if (novel == null || !mounted) return const SizedBox.shrink(); // Ne rien afficher si novel non trouvé ou widget démonté
+    if (novel == null || !mounted) return const SizedBox.shrink();
 
     final hasChapters = novel.chapters.isNotEmpty;
-    // Calculer la progression globale (attention à la division par zéro)
     final double novelProgress = hasChapters ? ((_currentPage + 1).clamp(1, novel.chapters.length) / novel.chapters.length) : 0.0;
 
 
-    return IgnorePointer( // Ignorer les interactions sur les barres
+    return IgnorePointer(
       child: Container(
-        // Couleur de fond légèrement transparente pour se superposer au contenu
         color: theme.colorScheme.surfaceContainer.withAlpha(200),
-        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0), // Marges internes
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Barre de progression du chapitre actuel (écoute ValueNotifier)
             ValueListenableBuilder<double>(
               valueListenable: _chapterProgressNotifier,
               builder: (context, value, child) {
                 return LinearProgressIndicator(
-                  value: value, // Valeur de 0.0 à 1.0
-                  backgroundColor: primaryColor.withAlpha((255 * 0.2).round()), // Fond transparent
-                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor), // Couleur de progression
-                  minHeight: 2, // Hauteur fine
+                  value: value,
+                  backgroundColor: primaryColor.withAlpha((255 * 0.2).round()),
+                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                  minHeight: 2,
                 );
               },
             ),
-            const SizedBox(height: 4), // Espace entre les barres
-            // Barre de progression globale du roman
+            const SizedBox(height: 4),
             LinearProgressIndicator(
-              value: novelProgress, // Progression globale calculée
+              value: novelProgress,
               backgroundColor: textColor.withAlpha((255 * 0.2).round()),
               valueColor: AlwaysStoppedAnimation<Color>(textColor.withAlpha((255 * 0.5).round())),
               minHeight: 2,
@@ -1839,4 +1812,5 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-} // Fin de NovelReaderPageState
+}
+

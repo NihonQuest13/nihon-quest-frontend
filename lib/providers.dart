@@ -1,4 +1,4 @@
-// lib/providers.dart (CORRIGÉ - Logique de modification/suppression de chapitre)
+// lib/providers.dart (AJOUT DU WRITER_MODE_PROVIDER)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +9,11 @@ import 'services/local_context_service.dart';
 import 'services/roadmap_service.dart';
 import 'services/sync_service.dart';
 import 'services/vocabulary_service.dart';
+
+// --- NOUVEAU PROVIDER ---
+/// Gère l'état du mode de lecture (Lecteur vs. Écrivain)
+final writerModeProvider = StateProvider<bool>((ref) => false);
+// --- FIN DU NOUVEAU PROVIDER ---
 
 // --- Providers inchangés ---
 enum ServerStatus { connecting, connected, failed }
@@ -185,7 +190,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
 
-  // ✅ CORRIGÉ : Ne met à jour que les métadonnées du roman (titre, genre...), sans toucher aux chapitres.
   Future<void> updateNovel(Novel novel) async {
     final supabase = ref.read(supabaseProvider);
     final userId = supabase.auth.currentUser?.id;
@@ -209,7 +213,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
   
-  // ✅ NOUVELLE MÉTHODE : Ajoute un seul chapitre de manière optimisée.
   Future<void> addChapter(String novelId, Chapter newChapter) async {
     final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
@@ -238,7 +241,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
 
-  // ✅ NOUVELLE MÉTHODE : Met à jour un seul chapitre de manière optimisée.
   Future<void> updateChapter(String novelId, Chapter updatedChapter) async {
     final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
@@ -272,7 +274,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
 
-  // ✅ NOUVELLE MÉTHODE : Supprime un seul chapitre de manière optimisée.
   Future<void> deleteChapter(String novelId, String chapterId) async {
     final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
@@ -327,3 +328,4 @@ final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return VocabularyService(prefs: prefs);
 });
+
