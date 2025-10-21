@@ -1,11 +1,9 @@
-// lib/models.dart 
+// lib/models.dart (AJOUT DE isDynamicOutline)
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
-// --- ON AJOUTE UN GÉNÉRATEUR D'UUID GLOBAL ---
 const uuid = Uuid();
 
-// Les classes VocabularyEntry et ChapterSummary restent inchangées
 class VocabularyEntry {
   final String word;
   final String reading;
@@ -105,6 +103,7 @@ class Novel {
   String? modelId;
   
   String? futureOutline;
+  bool isDynamicOutline; // ✅ NOUVEAU CHAMP
 
   Novel({
     String? id,
@@ -123,6 +122,7 @@ class Novel {
     this.previousRoadMap,
     this.modelId,
     this.futureOutline,
+    this.isDynamicOutline = true, // ✅ NOUVEAU CHAMP
   }) : id = id ?? uuid.v4(),
        chapters = chapters ?? [],
        summaries = summaries ?? [],
@@ -145,6 +145,7 @@ class Novel {
     String? previousRoadMap,
     String? modelId,
     String? futureOutline,
+    bool? isDynamicOutline, // ✅ NOUVEAU CHAMP
   }) {
     return Novel(
       id: id ?? this.id,
@@ -163,6 +164,7 @@ class Novel {
       previousRoadMap: previousRoadMap ?? this.previousRoadMap,
       modelId: modelId ?? this.modelId,
       futureOutline: futureOutline ?? this.futureOutline,
+      isDynamicOutline: isDynamicOutline ?? this.isDynamicOutline, // ✅ NOUVEAU CHAMP
     );
   }
 
@@ -197,7 +199,6 @@ class Novel {
       'level': level,
       'genre': genre,
       'specifications': specifications,
-      // 'chapters' est retiré, car il a sa propre table
       'summaries': summaries.map((summary) => summary.toJson()).toList(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -206,10 +207,10 @@ class Novel {
       'roadmap': roadMap,
       'model_id': modelId,
       'future_outline': futureOutline,
+      'is_dynamic_outline': isDynamicOutline, // ✅ NOUVEAU CHAMP
     };
   }
 
-  // ✅ NOUVELLE MÉTHODE POUR LA SÉRIALISATION VERS L'ISOLATE
   Map<String, dynamic> toJsonForIsolate() {
     return {
       'id': id,
@@ -218,7 +219,7 @@ class Novel {
       'level': level,
       'genre': genre,
       'specifications': specifications,
-      'chapters': chapters.map((c) => c.toJson()).toList(), // <-- La différence clé est ici !
+      'chapters': chapters.map((c) => c.toJson()).toList(),
       'summaries': summaries.map((summary) => summary.toJson()).toList(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -227,6 +228,7 @@ class Novel {
       'roadmap': roadMap,
       'model_id': modelId,
       'future_outline': futureOutline,
+      'is_dynamic_outline': isDynamicOutline, // ✅ NOUVEAU CHAMP
     };
   }
 
@@ -264,7 +266,7 @@ class Novel {
 
     return Novel(
       id: json['id']?.toString() ?? uuid.v4(),
-      user_id: userId ?? '00000000-0000-0000-0000-000000000000', // Fallback
+      user_id: userId ?? '00000000-0000-0000-0000-000000000000',
       title: json['title']?.toString() ?? 'Titre inconnu',
       level: json['level']?.toString() ?? 'N3',
       genre: json['genre']?.toString() ?? 'Fantasy',
@@ -278,6 +280,7 @@ class Novel {
       roadMap: json['roadmap']?.toString(),
       modelId: json['model_id']?.toString(),
       futureOutline: json['future_outline']?.toString(),
+      isDynamicOutline: json['is_dynamic_outline'] ?? true, // ✅ NOUVEAU CHAMP
     );
   }
 }

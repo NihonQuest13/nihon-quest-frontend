@@ -1,4 +1,4 @@
-// lib/services/roadmap_service.dart (AMÉLIORÉ AVEC LOGS ET GESTION DE CONTEXTE ROBUSTE)
+// lib/services/roadmap_service.dart (MODIFIÉ POUR LA TRAME ÉVOLUTIVE)
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,11 +18,9 @@ class RoadmapService {
 
   RoadmapService(this._ref);
 
-  /// S'occupe de mettre à jour le RÉSUMÉ DU PASSÉ (le roadmap)
   Future<void> triggerRoadmapUpdateIfNeeded(Novel novel, BuildContext context) async {
     final int chapterCount = novel.chapters.length;
 
-    // Déclenchement: Chapitre 4 (première fois), puis 7, 10, 13...
     final bool isFirstRoadmapTrigger = (chapterCount == 4);
     final bool isSubsequentRoadmapTrigger = (chapterCount > 4 && (chapterCount - 1) % 3 == 0);
 
@@ -33,31 +31,27 @@ class RoadmapService {
 
     if (isFirstRoadmapTrigger || isSubsequentRoadmapTrigger) {
        AppLogger.info(">>> Déclenchement de la mise à jour du Roadmap (Passé)...", tag: "RoadmapService");
-      await Future.delayed(const Duration(seconds: 1)); // Petit délai
+      await Future.delayed(const Duration(seconds: 2));
 
-      final currentContext = context;
-      if (!currentContext.mounted) {
-          AppLogger.warning("Contexte non monté AVANT l'appel IA pour màj Roadmap (Passé). Annulation.", tag: "RoadmapService");
+      if (!context.mounted) {
+          AppLogger.warning("Contexte non monté après délai pour màj Roadmap (Passé). Annulation.", tag: "RoadmapService");
           return;
       }
 
-      ScaffoldMessenger.of(currentContext).hideCurrentSnackBar();
-      ScaffoldMessenger.of(currentContext).showSnackBar(
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("🤖 L'écrivain met à jour le résumé de l'histoire (passé)..."),
+          content: Text("Mise à jour de la fiche de route (résumé passé) en arrière-plan..."),
           backgroundColor: Colors.blueAccent,
-          duration: Duration(seconds: 10), 
+          duration: Duration(seconds: 4),
         ),
       );
 
       try {
         final String newRoadMap = await AIService.updateRoadMap(novel);
-        AppLogger.success("Nouveau Roadmap (Passé) généré par le backend. Longueur: ${newRoadMap.length}", tag: "RoadmapService");
+        AppLogger.success("Nouveau Roadmap (Passé) généré.", tag: "RoadmapService");
 
-        if (!currentContext.mounted) {
-           AppLogger.warning("Contexte non monté APRÈS l'appel IA pour màj Roadmap (Passé). Mise à jour Novel annulée.", tag: "RoadmapService");
-           return;
-        }
+        if (!context.mounted) return;
 
         final updatedNovel = novel.copyWith(
             roadMap: newRoadMap,
@@ -66,37 +60,25 @@ class RoadmapService {
         await _ref.read(novelsProvider.notifier).updateNovel(updatedNovel);
         AppLogger.info("Novel mis à jour avec le nouveau Roadmap (Passé) via provider.", tag: "RoadmapService");
 
-        ScaffoldMessenger.of(currentContext).hideCurrentSnackBar();
-        ScaffoldMessenger.of(currentContext).showSnackBar(
-          const SnackBar(
-            content: Text("✅ Résumé de l'histoire (passé) mis à jour !"),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Le résumé de l'histoire (passé) a été mis à jour !"),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
       } catch (e, stackTrace) {
         AppLogger.error("Erreur lors de la mise à jour du Roadmap (Passé)", error: e, stackTrace: stackTrace, tag: "RoadmapService");
-        if (!currentContext.mounted) {
-           AppLogger.warning("Contexte non monté lors de la gestion d'erreur Roadmap (Passé).", tag: "RoadmapService");
-           return;
-        }
-
-        String errorMessage = "Échec de la mise à jour du résumé passé.";
-        if (e is ApiException) {
-          errorMessage += " Erreur: ${e.message}";
-          if (e.statusCode != null) {
-              errorMessage += " (Code: ${e.statusCode})";
-          }
-        } else {
-            errorMessage += " Erreur: ${e.toString()}";
-        }
-
-        ScaffoldMessenger.of(currentContext).hideCurrentSnackBar();
-        ScaffoldMessenger.of(currentContext).showSnackBar(
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
+            content: Text("Échec de la mise à jour du résumé passé: ${e.toString()}"),
             backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 10),
+            duration: const Duration(seconds: 8),
           ),
         );
       }
@@ -105,8 +87,17 @@ class RoadmapService {
     }
   }
 
-  /// S'occupe de générer ou régénérer le PLAN FUTUR (le "future outline")
+  // ✅ MODIFIÉ POUR IGNORER LA MISE À JOUR SI LA TRAME N'EST PAS ÉVOLUTIVE
   Future<void> triggerFutureOutlineUpdateIfNeeded(Novel novel, BuildContext context) async {
+    // Si la trame n'est pas dynamique (gérée par l'utilisateur), on ne fait rien.
+    if (!novel.isDynamicOutline) {
+      AppLogger.info(
+        "Mise à jour du Plan Directeur (FUTUR) ignorée car la trame est gérée par l'utilisateur.",
+        tag: "RoadmapService"
+      );
+      return;
+    }
+
     final int chapterCount = novel.chapters.length;
     final bool isMilestoneChapter = (chapterCount > 0 && chapterCount % 10 == 0);
 
@@ -119,14 +110,13 @@ class RoadmapService {
         AppLogger.info(">>> Déclenchement de la mise à jour du Plan Directeur (Futur)...", tag: "RoadmapService");
         await Future.delayed(const Duration(seconds: 3));
 
-      final currentContext = context;
-      if (!currentContext.mounted) {
+      if (!context.mounted) {
          AppLogger.warning("Contexte non monté après délai pour màj Plan Directeur (Futur). Annulation.", tag: "RoadmapService");
          return;
       }
 
-      ScaffoldMessenger.of(currentContext).hideCurrentSnackBar();
-      ScaffoldMessenger.of(currentContext).showSnackBar(
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Mise à jour de la trame future (chapitres ${chapterCount + 1}-${chapterCount + 10})..."),
           backgroundColor: Colors.deepPurpleAccent,
@@ -136,9 +126,9 @@ class RoadmapService {
 
       try {
         final String newOutline = await AIService.generateFutureOutline(novel);
-        AppLogger.success("Nouveau Plan Directeur (Futur) généré.", tag: "RoadmapService");
+         AppLogger.success("Nouveau Plan Directeur (Futur) généré.", tag: "RoadmapService");
 
-        if (!currentContext.mounted) return;
+        if (!context.mounted) return;
 
         final updatedNovel = novel.copyWith(
             futureOutline: newOutline,
@@ -148,19 +138,21 @@ class RoadmapService {
         AppLogger.info("Novel mis à jour avec le nouveau Plan Directeur (Futur) via provider.", tag: "RoadmapService");
 
 
-        ScaffoldMessenger.of(currentContext).hideCurrentSnackBar();
-        ScaffoldMessenger.of(currentContext).showSnackBar(
-          const SnackBar(
-            content: Text("Trame future de l'histoire mise à jour !"),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Trame future de l'histoire mise à jour !"),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
       } catch (e, stackTrace) {
         AppLogger.error("Erreur lors de la mise à jour du Plan Directeur (Futur)", error: e, stackTrace: stackTrace, tag: "RoadmapService");
-        if (!currentContext.mounted) return;
-        ScaffoldMessenger.of(currentContext).hideCurrentSnackBar();
-        ScaffoldMessenger.of(currentContext).showSnackBar(
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Échec de la mise à jour de la trame future: ${e.toString()}"),
             backgroundColor: Colors.redAccent,
@@ -206,9 +198,13 @@ class RoadmapService {
         .replaceAll('[CURRENT_ROADMAP]', tempNovel.roadMap ?? languagePrompts.firstChapterContext);
 
     AppLogger.info("Prompt pour le plan directeur construit (longueur: ${prompt.length})", tag: "RoadmapService");
+     if (kDebugMode) {
+        // debugPrint("Prompt Plan Directeur:\n$prompt");
+     }
     return prompt;
   }
 
+  // ✅ MODIFIÉ POUR ACCEPTER LE NOUVEAU CHAMP
   Future<Novel> createNovelFromPlan({
     required String userId,
     required String title,
@@ -217,7 +213,8 @@ class RoadmapService {
     required String level,
     required String genre,
     required String modelId,
-    required String generatedPlan,
+    required String? generatedPlan,
+    required bool isDynamicOutline,
   }) async {
     AppLogger.info("Création du Novel à partir du plan généré...", tag: "RoadmapService");
 
@@ -231,6 +228,7 @@ class RoadmapService {
       modelId: modelId,
       createdAt: DateTime.now(),
       futureOutline: generatedPlan,
+      isDynamicOutline: isDynamicOutline,
       roadMap: "Le roman vient de commencer.",
     );
 
@@ -244,3 +242,4 @@ class RoadmapService {
     }
   }
 }
+
