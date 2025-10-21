@@ -104,9 +104,7 @@ class Novel {
   String? previousRoadMap;
   String? modelId;
   
-  // --- MODIFICATION : Ajout du plan directeur (ton "sommaire") ---
   String? futureOutline;
-  // --- FIN MODIFICATION ---
 
   Novel({
     String? id,
@@ -124,13 +122,12 @@ class Novel {
     this.roadMap,
     this.previousRoadMap,
     this.modelId,
-    this.futureOutline, // --- MODIFICATION : Ajout au constructeur ---
+    this.futureOutline,
   }) : id = id ?? uuid.v4(),
        chapters = chapters ?? [],
        summaries = summaries ?? [],
        updatedAt = updatedAt ?? createdAt;
 
-  // ⬇️⬇️ MÉTHODE copyWith AJOUTÉE ICI ⬇️⬇️
   Novel copyWith({
     String? id,
     String? user_id,
@@ -168,7 +165,6 @@ class Novel {
       futureOutline: futureOutline ?? this.futureOutline,
     );
   }
-  // ⬆️⬆️ FIN DE L'AJOUT ⬆️⬆️
 
   void addChapter(Chapter chapter) {
     chapters.add(chapter);
@@ -209,7 +205,28 @@ class Novel {
       'cover_image_path': coverImagePath,
       'roadmap': roadMap,
       'model_id': modelId,
-      'future_outline': futureOutline, // --- MODIFICATION : Ajout au JSON (snake_case pour la BDD) ---
+      'future_outline': futureOutline,
+    };
+  }
+
+  // ✅ NOUVELLE MÉTHODE POUR LA SÉRIALISATION VERS L'ISOLATE
+  Map<String, dynamic> toJsonForIsolate() {
+    return {
+      'id': id,
+      'user_id': user_id,
+      'title': title,
+      'level': level,
+      'genre': genre,
+      'specifications': specifications,
+      'chapters': chapters.map((c) => c.toJson()).toList(), // <-- La différence clé est ici !
+      'summaries': summaries.map((summary) => summary.toJson()).toList(),
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'language': language,
+      'cover_image_path': coverImagePath,
+      'roadmap': roadMap,
+      'model_id': modelId,
+      'future_outline': futureOutline,
     };
   }
 
@@ -260,7 +277,7 @@ class Novel {
       coverImagePath: json['cover_image_path']?.toString(),
       roadMap: json['roadmap']?.toString(),
       modelId: json['model_id']?.toString(),
-      futureOutline: json['future_outline']?.toString(), // --- MODIFICATION : Ajout depuis JSON ---
+      futureOutline: json['future_outline']?.toString(),
     );
   }
 }
@@ -278,17 +295,15 @@ class Chapter {
     required this.createdAt,
   }) : id = id ?? uuid.v4();
 
-  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'content': content,
-      'created_at': createdAt.toIso8601String(), // ✅ CORRIGÉ: 'createdAt' -> 'created_at'
+      'created_at': createdAt.toIso8601String(),
     };
   }
 
-  // --- ⬇️ CORRECTION PRINCIPALE ICI ⬇️ ---
   factory Chapter.fromJson(Map<String, dynamic> json) {
      DateTime parseDateTime(dynamic dateString, DateTime fallback) {
        if (dateString is String) {
@@ -296,7 +311,6 @@ class Chapter {
        }
        return fallback;
      }
-     // ✅ CORRIGÉ: 'createdAt' -> 'created_at'
      final createdAt = parseDateTime(json['created_at'], DateTime.now()); 
 
     return Chapter(

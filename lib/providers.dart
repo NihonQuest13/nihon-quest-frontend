@@ -1,4 +1,4 @@
-// lib/providers.dart (CORRIGÉ - Dépendance à l'Auth)
+// lib/providers.dart (CORRIGÉ - Logique de modification/suppression de chapitre)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,41 +87,28 @@ final sortOptionProvider = StateProvider<SortOption>((ref) => SortOption.updated
 
 final supabaseProvider = Provider((ref) => Supabase.instance.client);
 
-// --- ✅ NOUVEAU PROVIDER POUR OBSERVER L'AUTH ---
-/// Ce provider émet un nouvel état à chaque connexion ou déconnexion.
 final authStateProvider = StreamProvider<AuthState>((ref) {
   final supabase = ref.watch(supabaseProvider);
   return supabase.auth.onAuthStateChange;
 });
-// --- FIN DE L'AJOUT ---
-
 
 final novelsProvider = AsyncNotifierProvider<NovelsNotifier, List<Novel>>(NovelsNotifier.new);
 
 class NovelsNotifier extends AsyncNotifier<List<Novel>> {
-  // ❌ La logique de cache manuelle est supprimée.
-  // ❌ _lastFetch, _cacheDuration, _cachedUserId
 
   @override
   Future<List<Novel>> build() async {
-    // ✅ DÉPENDANCE N°1 : L'état d'authentification
-    // Si l'auth change (login/logout), ce provider sera invalidé et `build` sera ré-exécuté.
     ref.watch(authStateProvider);
-
-    // ✅ DÉPENDANCE N°2 : L'option de tri
-    // Si l'option de tri change, ce provider sera invalidé et `build` sera ré-exécuté.
     final sortOption = ref.watch(sortOptionProvider);
 
-    final supabase = ref.read(supabaseProvider); // .read() est ok ici
+    final supabase = ref.read(supabaseProvider);
     final userId = supabase.auth.currentUser?.id;
 
-    // Si déconnecté, retourne une liste vide.
     if (userId == null) {
       debugPrint("[NovelsProvider] Aucun utilisateur, retour d'une liste vide.");
       return [];
     }
 
-    // Si l'auth ou le tri a changé, on refait la requête.
     debugPrint("[NovelsProvider] Récupération depuis Supabase (User: $userId, Tri: $sortOption)...");
     
     final novelsData = await supabase
@@ -135,14 +122,11 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       return Novel.fromJson(novelRow);
     }).toList();
     
-    // Le tri est appliqué après le fetch
     return _sortNovels(novels, sortOption);
   }
 
-  // ✅ Le `sortOption` est maintenant passé en paramètre
   List<Novel> _sortNovels(List<Novel> novels, SortOption sortOption) {
     if (sortOption == SortOption.updatedAt) {
-      // La requête est déjà triée par updatedAt, on ne fait rien
       return novels; 
     }
     
@@ -161,7 +145,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         });
         break;
       case SortOption.updatedAt:
-        break; // Déjà géré
+        break;
     }
     return novels;
   }
@@ -173,10 +157,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     return data;
   }
 
-  // --- Les méthodes add, update, delete sont maintenant plus simples ---
-  // Elles font une mise à jour optimiste, puis appellent Supabase.
-  // Si Supabase échoue, on invalide pour forcer un `build` qui récupère la vérité.
-
   Future<void> addNovel(Novel novel) async {
     final supabase = ref.read(supabaseProvider);
     final userId = supabase.auth.currentUser?.id;
@@ -185,7 +165,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     final novelData = _novelToSupabaseJson(novel, userId);
 
     final currentNovels = state.value ?? [];
-    // Mise à jour optimiste
     state = AsyncValue.data([novel, ...currentNovels]);
 
     try {
@@ -199,14 +178,14 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         }).toList();
         await supabase.from('chapters').insert(chaptersData);
       }
-      // Pas besoin de toucher au cache, l'état est déjà à jour
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de l'ajout, rechargement...");
-      ref.invalidateSelf(); // Invalide le provider pour forcer un refetch
+      ref.invalidateSelf();
       rethrow;
     }
   }
 
+  // ✅ CORRIGÉ : Ne met à jour que les métadonnées du roman (titre, genre...), sans toucher aux chapitres.
   Future<void> updateNovel(Novel novel) async {
     final supabase = ref.read(supabaseProvider);
     final userId = supabase.auth.currentUser?.id;
@@ -216,7 +195,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
 
     final currentNovels = state.value ?? [];
     final updatedList = currentNovels.map((n) => n.id == novel.id ? novel : n).toList();
-    // Mise à jour optimiste
     state = AsyncValue.data(updatedList);
 
     try {
@@ -224,60 +202,127 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         .from('novels')
         .update(novelData)
         .eq('id', novel.id);
-      
-      await supabase.from('chapters').delete().eq('novel_id', novel.id);
-      
-      if (novel.chapters.isNotEmpty) {
-        final chaptersData = novel.chapters.map((chapter) {
-          final chapterJson = chapter.toJson();
-          chapterJson['novel_id'] = novel.id;
-          return chapterJson;
-        }).toList();
-        await supabase.from('chapters').insert(chaptersData);
-      }
     } catch (e) {
-      debugPrint("[NovelsProvider] Erreur lors de la mise à jour, rechargement...");
-      ref.invalidateSelf(); // Invalide le provider pour forcer un refetch
+      debugPrint("[NovelsProvider] Erreur lors de la mise à jour du roman, rechargement...");
+      ref.invalidateSelf();
       rethrow;
     }
   }
   
+  // ✅ NOUVELLE MÉTHODE : Ajoute un seul chapitre de manière optimisée.
   Future<void> addChapter(String novelId, Chapter newChapter) async {
+    final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
-    final novelToUpdate = currentNovels.firstWhere(
-      (n) => n.id == novelId, 
-      orElse: () => throw 'Roman non trouvé'
-    );
-    
+    final novelIndex = currentNovels.indexWhere((n) => n.id == novelId);
+    if (novelIndex == -1) return;
+
+    final novelToUpdate = currentNovels[novelIndex];
     novelToUpdate.addChapter(newChapter);
-    await updateNovel(novelToUpdate); // `updateNovel` gère déjà la BDD et l'état
+    novelToUpdate.updatedAt = DateTime.now();
+
+    state = AsyncValue.data([...currentNovels]);
+
+    try {
+        final chapterData = newChapter.toJson();
+        chapterData['novel_id'] = novelId;
+
+        await supabase.from('chapters').insert(chapterData);
+        await supabase
+            .from('novels')
+            .update({'updated_at': novelToUpdate.updatedAt.toIso8601String()})
+            .eq('id', novelId);
+    } catch (e) {
+        debugPrint("[NovelsProvider] Erreur lors de l'ajout du chapitre, rechargement...");
+        ref.invalidateSelf();
+        rethrow;
+    }
+  }
+
+  // ✅ NOUVELLE MÉTHODE : Met à jour un seul chapitre de manière optimisée.
+  Future<void> updateChapter(String novelId, Chapter updatedChapter) async {
+    final supabase = ref.read(supabaseProvider);
+    final currentNovels = state.value ?? [];
+
+    final novelIndex = currentNovels.indexWhere((n) => n.id == novelId);
+    if (novelIndex == -1) return;
+    final novel = currentNovels[novelIndex];
+
+    final chapterIndex = novel.chapters.indexWhere((c) => c.id == updatedChapter.id);
+    if (chapterIndex == -1) return;
+
+    novel.chapters[chapterIndex] = updatedChapter;
+    novel.updatedAt = DateTime.now();
+
+    state = AsyncValue.data([...currentNovels]);
+
+    try {
+      await supabase
+        .from('chapters')
+        .update(updatedChapter.toJson())
+        .eq('id', updatedChapter.id);
+      
+      await supabase
+        .from('novels')
+        .update({'updated_at': novel.updatedAt.toIso8601String()})
+        .eq('id', novelId);
+    } catch (e) {
+      debugPrint("[NovelsProvider] Erreur lors de la mise à jour du chapitre, rechargement...");
+      ref.invalidateSelf();
+      rethrow;
+    }
+  }
+
+  // ✅ NOUVELLE MÉTHODE : Supprime un seul chapitre de manière optimisée.
+  Future<void> deleteChapter(String novelId, String chapterId) async {
+    final supabase = ref.read(supabaseProvider);
+    final currentNovels = state.value ?? [];
+
+    final novelIndex = currentNovels.indexWhere((n) => n.id == novelId);
+    if (novelIndex == -1) return;
+    final novel = currentNovels[novelIndex];
+
+    novel.chapters.removeWhere((c) => c.id == chapterId);
+    novel.updatedAt = DateTime.now();
+    
+    state = AsyncValue.data([...currentNovels]);
+
+    try {
+      await supabase
+        .from('chapters')
+        .delete()
+        .eq('id', chapterId);
+      
+      await supabase
+        .from('novels')
+        .update({'updated_at': novel.updatedAt.toIso8601String()})
+        .eq('id', novelId);
+    } catch (e) {
+      debugPrint("[NovelsProvider] Erreur lors de la suppression du chapitre, rechargement...");
+      ref.invalidateSelf();
+      rethrow;
+    }
   }
 
   Future<void> deleteNovel(String novelId) async {
     final supabase = ref.read(supabaseProvider);
     
     final currentNovels = state.value ?? [];
-    // Mise à jour optimiste
     state = AsyncValue.data(currentNovels.where((n) => n.id != novelId).toList());
     
     try {
       await supabase.from('novels').delete().eq('id', novelId);
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la suppression, rechargement...");
-      ref.invalidateSelf(); // Invalide le provider pour forcer un refetch
+      ref.invalidateSelf();
       rethrow;
     }
   }
   
   Future<void> refresh() async {
-    // La fonction refresh invalide déjà le provider, 
-    // ce qui forcera `build` à se ré-exécuter.
-    // On n'a rien besoin de faire de plus.
     ref.invalidateSelf();
   }
 }
 
-// --- Le reste du fichier est inchangé ---
 final vocabularyServiceProvider = Provider<VocabularyService>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return VocabularyService(prefs: prefs);

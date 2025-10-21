@@ -1,16 +1,17 @@
-// lib/create_novel_page.dart (MODIFIÉ POUR LE STREAMING ET CORRIGÉ)
+// lib/create_novel_page.dart (MODIFIÉ POUR CACHER LE PLAN FUTUR)
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:japanese_story_app/services/sync_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
 import 'config.dart';
 import 'providers.dart';
 import 'services/ai_service.dart';
+import 'services/ai_prompts.dart';
 import 'novel_reader_page.dart';
 import 'widgets/streaming_text_widget.dart';
-import 'widgets/optimized_common_widgets.dart';
 import 'utils/app_logger.dart';
 
 class CreateNovelPage extends ConsumerStatefulWidget {
@@ -66,131 +67,122 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     if (!(_formKey.currentState?.validate() ?? false) || _isLoading) {
       return;
     }
-    
+
     setState(() => _isLoading = true);
 
-    await _generateNovelWithStreamingDialog();
+    await _handleNovelCreationFlow();
 
     if (mounted) {
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _generateNovelWithStreamingDialog() async {
+  // ✅ CORRECTION : Logique entièrement revue pour enchaîner les dialogues de streaming.
+  Future<void> _handleNovelCreationFlow() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
-
     if (userId == null) {
-      if (mounted) { // ✅ SÉCURITÉ : Vérification du contexte
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Erreur : Utilisateur non connecté."),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showFeedback("Erreur : Utilisateur non connecté.", isError: true);
       return;
     }
 
-    // ✅ CORRIGÉ : On récupère le service roadmapServiceProvider
     final roadmapService = ref.read(roadmapServiceProvider);
+    final syncService = ref.read(syncServiceProvider);
 
-    final String title = _titleController.text.trim();
-    final String specifications = _specificationsController.text.trim();
-    final String language = _selectedLanguage;
-    final String level = _selectedLevel;
-    final String genre = _selectedGenre;
-    final String modelId = _selectedModelId;
-    
-    final Completer<String> textCompleter = Completer<String>();
-    String generatedPlan = "";
+    final novelDetails = {
+      'title': _titleController.text.trim(),
+      'specifications': _specificationsController.text.trim(),
+      'language': _selectedLanguage,
+      'level': _selectedLevel,
+      'genre': _selectedGenre,
+      'modelId': _selectedModelId,
+      'userId': userId,
+    };
 
     try {
+      // --- Étape 1: Génération du Plan Directeur (Futur) ---
       final String planPrompt = roadmapService.getPlanPrompt(
-        title: title,
-        userPreferences: specifications,
-        language: language,
-        level: level,
-        genre: genre,
-        modelId: modelId,
+        title: novelDetails['title']!,
+        userPreferences: novelDetails['specifications']!,
+        language: novelDetails['language']!,
+        level: novelDetails['level']!,
+        genre: novelDetails['genre']!,
+        modelId: novelDetails['modelId']!,
         userId: userId,
       );
-
-      // ✅ CORRIGÉ : Appel direct à la méthode statique de AIService
-      final Stream<String> generationStream = AIService.streamChapterFromPrompt(
+      final Stream<String> planStream = AIService.streamChapterFromPrompt(
         prompt: planPrompt,
-        modelId: modelId,
-        language: language,
+        modelId: novelDetails['modelId']!,
+        language: novelDetails['language']!,
       );
 
-      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
-      showDialog(
+      if (!mounted) return;
+      // ✅ MODIFICATION : Changement du titre du dialogue
+      final String? rawPlan = await _showStreamingDialog(
         context: context,
-        barrierDismissible: false,
-        builder: (BuildContext dialogContext) {
-          return AlertDialog(
-            title: const Text("Génération du plan en cours..."),
-            content: SizedBox( // ✅ CORRIGÉ : Remplacement de Container par SizedBox
-              width: MediaQuery.of(context).size.width * 0.8,
-              height: MediaQuery.of(context).size.height * 0.6,
-              child: SingleChildScrollView(
-                // ✅ CORRIGÉ : Renommage de StreamingTextWidget en StreamingTextAnimation
-                child: StreamingTextAnimation(
-                  stream: generationStream,
-                  onDone: (fullText) {
-                    textCompleter.complete(fullText);
-                    if (Navigator.of(dialogContext).canPop()) {
-                       Navigator.of(dialogContext).pop();
-                    }
-                  },
-                  onError: (error) {
-                    textCompleter.completeError(error);
-                    if (Navigator.of(dialogContext).canPop()) {
-                      Navigator.of(dialogContext).pop();
-                    }
-                  },
-                ),
-              ),
-            ),
-          );
-        },
+        title: "Génération de la trame de l'histoire...", // Titre plus générique
+        stream: planStream,
       );
 
-      generatedPlan = await textCompleter.future;
-
-      if (generatedPlan.trim().isEmpty) {
-        throw Exception("La génération du plan a échoué ou a retourné un texte vide.");
+      if (rawPlan == null) {
+        _showFeedback("Création annulée.", isError: false);
+        return;
+      }
+      if (rawPlan.trim().isEmpty) {
+        throw Exception("La génération de la trame a échoué (résultat vide).");
       }
 
-      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        // ✅ CORRIGÉ : Remplacement de LoadingIndicator par LoadingWidget et ajout de `const`
-        builder: (context) => const Center(child: LoadingWidget(message: "Finalisation..."),),
-      );
-
+      // --- Étape 2: Création de l'objet Roman (avec le plan futur caché) ---
+      final String cleanedPlan = AIService.cleanAIResponse(rawPlan);
       final Novel newNovel = await roadmapService.createNovelFromPlan(
         userId: userId,
-        title: title,
-        specifications: specifications,
-        language: language,
-        level: level,
-        genre: genre,
-        modelId: modelId,
-        generatedPlan: generatedPlan,
+        title: novelDetails['title']!,
+        specifications: novelDetails['specifications']!,
+        language: novelDetails['language']!,
+        level: novelDetails['level']!,
+        genre: novelDetails['genre']!,
+        modelId: novelDetails['modelId']!,
+        generatedPlan: cleanedPlan, // Le plan est stocké mais ne sera pas montré
       );
 
-      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
-      await AIService.generateNextChapter(newNovel, context, ref);
-      
-      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
-      Navigator.of(context).pop();
+      // --- Étape 3: Génération du Chapitre 1 ---
+      final String chapter1Prompt = await AIService.preparePrompt(novel: newNovel, isFirstChapter: true);
+      final Stream<String> chapter1Stream = AIService.streamChapterFromPrompt(
+        prompt: chapter1Prompt,
+        modelId: newNovel.modelId,
+        language: newNovel.language,
+      );
 
-      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
-      Navigator.of(context).pop();
+      if (!mounted) return;
+      final String? chapter1FullText = await _showStreamingDialog(
+        context: context,
+        title: "Génération du Chapitre 1...",
+        stream: chapter1Stream,
+      );
 
-      if (!mounted) return; // ✅ SÉCURITÉ : Vérification du contexte
-      Navigator.of(context).push(
+      if (chapter1FullText == null) {
+        _showFeedback("Création annulée.", isError: false);
+        await ref.read(novelsProvider.notifier).deleteNovel(newNovel.id); // Nettoyage
+        return;
+      }
+      if (chapter1FullText.trim().isEmpty) {
+        throw Exception("La génération du chapitre 1 a échoué (résultat vide).");
+      }
+
+      // --- Étape 4: Finalisation & Sauvegarde ---
+      final Chapter firstChapter = AIService.extractTitleAndContent(
+        chapter1FullText, 0, true, false, AIPrompts.getPromptsFor(newNovel.language),
+      );
+      await ref.read(novelsProvider.notifier).addChapter(newNovel.id, firstChapter);
+
+      final syncTask = SyncTask(action: 'add', novelId: newNovel.id, content: firstChapter.content, chapterIndex: 0);
+      await syncService.addTask(syncTask);
+
+      // --- Étape 5: Navigation ---
+      if (!mounted) return;
+      _showFeedback("Roman créé avec succès !", isError: false);
+
+      Navigator.of(context).pop(); // Quitte CreateNovelPage
+      Navigator.of(context).pushReplacement( // Remplace la page actuelle pour éviter un retour accidentel
         MaterialPageRoute(
           builder: (context) => NovelReaderPage(
             novelId: newNovel.id,
@@ -201,20 +193,113 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
       );
 
     } catch (e, stackTrace) {
-      // ✅ CORRIGÉ : Renommage de logError en error
       AppLogger.error("Échec lors de la création du roman", error: e, stackTrace: stackTrace);
-      if (mounted) { // ✅ SÉCURITÉ : Vérification du contexte
-        if (Navigator.of(context).canPop()) {
-           Navigator.of(context).pop(); // Ferme le loading dialog s'il est ouvert
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Erreur lors de la création : ${e.toString()}"),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (mounted) {
+        _showFeedback("Erreur lors de la création : ${e.toString()}", isError: true);
       }
     }
+  }
+
+  // ✅ NOUVELLE FONCTION HELPER pour les dialogues de streaming
+  Future<String?> _showStreamingDialog({
+    required BuildContext context,
+    required String title,
+    required Stream<String> stream,
+  }) {
+    final completer = Completer<String?>();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row( // Ajout d'un indicateur visuel
+            children: [
+              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
+              const SizedBox(width: 16),
+              Expanded(child: Text(title)),
+            ],
+          ),
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.8,
+            height: MediaQuery.of(context).size.height * 0.6,
+            // ✅ MODIFICATION : Le contenu du stream n'est PAS affiché ici
+            child: Center(
+              child: Text(
+                "L'écrivain prépare l'histoire...",
+                style: Theme.of(context).textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ),
+            // child: SingleChildScrollView(
+            //   child: StreamingTextAnimation(
+            //     stream: stream,
+            //     onDone: (fullText) {
+            //       if (!completer.isCompleted) completer.complete(fullText);
+            //       if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+            //     },
+            //     onError: (error) {
+            //       if (!completer.isCompleted) completer.completeError(error);
+            //       if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+            //     },
+            //   ),
+            // ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                if (!completer.isCompleted) completer.complete(null); // Annulation utilisateur
+                if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+              },
+              child: const Text("Annuler"),
+            )
+          ],
+        );
+      },
+    );
+
+    // Écouter le stream en arrière-plan pendant que le dialogue "générique" est affiché
+    final streamSubscription = stream.listen(
+      (chunk) { /* Ne rien faire avec le chunk ici */ },
+      onDone: () {
+        // Le stream est terminé, mais on ne sait pas encore le contenu
+        // On suppose que AIService gère les erreurs de contenu vide
+      },
+      onError: (error) {
+        if (!completer.isCompleted) completer.completeError(error);
+      },
+      cancelOnError: true,
+    );
+
+    // Gérer la complétion du dialogue (quand l'utilisateur annule ou que le stream finit)
+    completer.future.then((result) async {
+      await streamSubscription.cancel(); // Annuler l'écoute du stream
+      if (Navigator.of(context).canPop()) {
+         // Assurez-vous que le dialogue est toujours affiché avant de le fermer
+         // (peut avoir déjà été fermé par onError/onDone interne au dialogue)
+        Navigator.of(context).popUntil((route) => route is! DialogRoute);
+      }
+    }).catchError((error) async {
+       await streamSubscription.cancel();
+       if (Navigator.of(context).canPop()) {
+         Navigator.of(context).popUntil((route) => route is! DialogRoute);
+       }
+    });
+
+    // Retourner le futur qui complétera avec le texte complet ou null/erreur
+    return completer.future;
+  }
+
+
+  // ✅ NOUVELLE FONCTION HELPER pour les messages
+  void _showFeedback(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+      ),
+    );
   }
 
   @override
@@ -247,7 +332,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 labelText: 'Écrivain',
                 prefixIcon: Icon(Icons.edit_note_rounded),
               ),
-              items: kWritersMap.entries.map((entry) { 
+              items: kWritersMap.entries.map((entry) {
                 return DropdownMenuItem<String>(
                   value: entry.key,
                   child: Column(
@@ -269,7 +354,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
                 );
               }).toList(),
               selectedItemBuilder: (BuildContext context) {
-                return kWritersMap.values.map<Widget>((item) { 
+                return kWritersMap.values.map<Widget>((item) {
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Text(item['name']!, overflow: TextOverflow.ellipsis),
@@ -346,10 +431,10 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
               ),
-              icon: _isLoading 
+              icon: _isLoading
                   ? Container(
-                      width: 24, 
-                      height: 24, 
+                      width: 24,
+                      height: 24,
                       padding: const EdgeInsets.all(2.0),
                       child: const CircularProgressIndicator(strokeWidth: 3, color: Colors.white)
                     )

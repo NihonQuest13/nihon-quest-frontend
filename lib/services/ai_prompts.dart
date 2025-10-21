@@ -1,5 +1,5 @@
 // lib/services/ai_prompts.dart
-// (CORRIGÉ AVEC ANCRAGE RENFORCÉ)
+// (CORRIGÉ AVEC ANCRAGE RENFORCÉ ET MEILLEUR FALLBACK)
 
 /// Contient tous les prompts pour une langue spécifique.
 class LanguagePrompts {
@@ -15,7 +15,7 @@ class LanguagePrompts {
   final String contextLastChapterHeader;
   final String contextSimilarSectionHeader;
   final String contextLastSentenceHeader;
-  final String contextFollowInstruction; // <-- C'EST CETTE LIGNE QUI EST MODIFIÉE
+  final String contextFollowInstruction; 
   final String outputFormatFirst;
   final String outputFormatNext;
   final String outputFormatFinal;
@@ -25,7 +25,7 @@ class LanguagePrompts {
   final String titleFinal;
   final String titleChapterPrefix;
   final String titleChapterSuffix;
-  final String contextNotAvailable;
+  final String contextNotAvailable; // <-- C'EST CETTE LIGNE QUI EST MODIFIÉE
   final String firstChapterContext;
 
   // --- MODIFICATION : Ajout des champs pour le plan directeur (ton "sommaire") ---
@@ -204,7 +204,9 @@ Your response must only contain the text of the summary. Do NOT start your respo
   titleFinal: 'Final Chapter',
   titleChapterPrefix: 'Chapter ',
   titleChapterSuffix: '',
-  contextNotAvailable: "No context available.",
+  // --- ✅ CORRECTION ---
+  contextNotAvailable: "No particular specifications.",
+  // --- FIN CORRECTION ---
   firstChapterContext: "This is the first chapter.",
   
   // --- MODIFICATION : Ajout des traductions ---
@@ -346,7 +348,9 @@ Votre réponse ne doit contenir que le texte du résumé. Ne commencez PAS votre
   titleFinal: 'Chapitre Final',
   titleChapterPrefix: 'Chapitre ',
   titleChapterSuffix: '',
-  contextNotAvailable: "Pas de contexte disponible.",
+  // --- ✅ CORRECTION ---
+  contextNotAvailable: "Aucune spécification particulière.",
+  // --- FIN CORRECTION ---
   firstChapterContext: "C'est le premier chapitre.",
   
   // --- MODIFICATION : Ajout des traductions ---
@@ -430,7 +434,9 @@ Principio de escritura - "Mostrar, no contar": // --- NUMÉROTATION MISE À JOUR
   titleFinal: 'Capítulo Final',
   titleChapterPrefix: 'Capítulo ',
   titleChapterSuffix: '',
-  contextNotAvailable: "No hay contexto disponible.",
+  // --- ✅ CORRECTION ---
+  contextNotAvailable: "Sin especificaciones particulares.",
+  // --- FIN CORRECTION ---
   firstChapterContext: "Este es el primer capítulo.",
   
   // --- MODIFICATION : Ajout des traductions ---
@@ -514,7 +520,9 @@ Principio di scrittura - "Mostra, non raccontare": // --- NUMÉROTATION MISE À 
   titleFinal: 'Capitolo Finale',
   titleChapterPrefix: 'Capitolo ',
   titleChapterSuffix: '',
-  contextNotAvailable: "Nessun contesto disponibile.",
+  // --- ✅ CORRECTION ---
+  contextNotAvailable: "Nessuna specifica particolare.",
+  // --- FIN CORRECTION ---
   firstChapterContext: "Questo è il primo capitolo.",
   
   // --- MODIFICATION : Ajout des traductions ---
@@ -598,7 +606,9 @@ const LanguagePrompts _koreanPrompts = LanguagePrompts(
   titleFinal: '마지막 장',
   titleChapterPrefix: '제 ',
   titleChapterSuffix: ' 장',
-  contextNotAvailable: "사용 가능한 문맥 없음.",
+  // --- ✅ CORRECTION ---
+  contextNotAvailable: "특별한 사양 없음.",
+  // --- FIN CORRECTION ---
   firstChapterContext: "이것은 첫 번째 장입니다.",
   
   // --- MODIFICATION : Ajout des traductions ---
@@ -722,7 +732,7 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
 -   物語の中で登場する場所の名前
 
 最終的に、物語の最初から現在までを網羅した、**新しく、一貫性のある単一の段落**を作成してください。
-出力は、更新されたあらすじのテキストのみでなければなりません。回答の冒頭にタイトルを付けないでください。
+出力は、更新されたあらすじのテキストのみでなければなりません。回答の冒t頭にタイトルを付けないでください。
 ''',
   roadmapCreatePrompt: '''
 以下は、小説「[NOVEL_TITLE]」の**最初の3つの章**の内容です。
@@ -743,6 +753,7 @@ const LanguagePrompts _japanesePrompts = LanguagePrompts(
   titleFinal: '最終章',
   titleChapterPrefix: '第',
   titleChapterSuffix: '章',
+  // --- ✅ PAS DE CORRECTION NÉCESSAIRE ICI, "特に指定なし" EST PARFAIT ---
   contextNotAvailable: "特に指定なし",
   firstChapterContext: "これは最初の章です。",
 
