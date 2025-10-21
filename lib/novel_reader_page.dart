@@ -1,4 +1,4 @@
-// lib/novel_reader_page.dart (MODIFIÉ POUR LE MODE ÉCRIVAIN ET L'AUTO-REFRESH)
+// lib/novel_reader_page.dart (CORRIGÉ POUR LA GESTION DE SUPPRESSION/MODIFICATION)
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
@@ -58,10 +58,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
   Stream<String>? _chapterStream;
   bool _showUIElements = true;
 
-  // --- NOUVEAU : Pour l'édition du plan futur ---
   final TextEditingController _futureOutlineController = TextEditingController();
   bool _isEditingOutline = false;
-  // --- FIN ---
 
   @override
   void initState() {
@@ -664,6 +662,7 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
+  // ✅ CORRIGÉ : Logique de navigation après suppression
   Future<void> _deleteCurrentChapter(Novel novel) async {
     if (!mounted || novel.chapters.isEmpty || _isGeneratingNextChapter) {
         AppLogger.warning("Suppression annulée: !mounted=${!mounted}, isEmpty=${novel.chapters.isEmpty}, isGenerating=$_isGeneratingNextChapter", tag: "NovelReaderPage");
@@ -708,7 +707,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     await ref.read(syncServiceProvider).addTask(syncTask);
      AppLogger.info("Tâche de synchronisation 'delete_chapter' ajoutée.", tag: "NovelReaderPage");
 
-
     try {
       if(_prefsLoaded) {
         final key = 'scroll_pos_${widget.novelId}_$chapterIndexToDelete';
@@ -723,6 +721,14 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
        AppLogger.success("Chapitre supprimé avec succès via le provider.", tag: "NovelReaderPage");
 
       _showSnackbarMessage('Chapitre "${chapterToDelete.title}" supprimé.', Colors.green);
+
+      // ✅ Nouvelle logique pour gérer la navigation après suppression
+      // Le `ref.watch` va reconstruire le widget. `build` s'exécutera à nouveau
+      // avec la nouvelle liste de chapitres. Nous n'avons plus besoin de gérer manuellement
+      // le `PageController` ici, car la reconstruction du `PageView.builder` avec un
+      // nouvel `itemCount` et une nouvelle `key` forcera Flutter à se réajuster correctement.
+      // Le listener `_onPageChanged` s'occupera de mettre à jour `_currentPage` si l'index
+      // actuel n'est plus valide.
 
     } catch (e, stackTrace) {
       AppLogger.error("Erreur critique lors de la suppression du chapitre", error: e, stackTrace: stackTrace, tag: "NovelReaderPage");
@@ -834,13 +840,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     _saveFontSizePreference(_currentFontSize);
   }
 
-  // --- CORRECTION : La fonction retourne maintenant un Future<bool> ---
   Future<bool> _saveFutureOutline(Novel novel) async {
     if (!mounted) return false;
 
     final newOutline = _futureOutlineController.text.trim();
     if (newOutline == (novel.futureOutline ?? '')) {
-      // Pas de changement, on quitte le mode édition. C'est un "succès".
       return true;
     }
 
@@ -853,15 +857,14 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     try {
       await ref.read(novelsProvider.notifier).updateNovel(updatedNovel);
       _showSnackbarMessage("Plan directeur mis à jour.", Colors.green);
-      return true; // Succès
+      return true;
     } catch (e) {
       AppLogger.error("Erreur sauvegarde plan directeur", error: e, tag: "NovelReaderPage");
       _showSnackbarMessage("Erreur lors de la sauvegarde du plan.", Colors.redAccent);
-      return false; // Échec
+      return false;
     }
   }
 
-  // --- CORRECTION : La fenêtre de dialogue écoute maintenant les changements du provider ---
   void _showNovelInfoSheet(Novel novel) {
     _futureOutlineController.text = novel.futureOutline ?? '';
 
@@ -870,12 +873,11 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       builder: (BuildContext context) {
         return Consumer(builder: (context, ref, child) {
           final isWriterMode = ref.watch(writerModeProvider);
-          // On écoute le provider pour avoir la version la plus à jour du roman
           final asyncNovels = ref.watch(novelsProvider);
           final Novel? currentNovel = asyncNovels.when(
             data: (novels) => novels.firstWhereOrNull((n) => n.id == widget.novelId),
-            loading: () => novel, // Fallback pendant le chargement
-            error: (err, stack) => novel, // Fallback en cas d'erreur
+            loading: () => novel,
+            error: (err, stack) => novel,
           );
 
           if (currentNovel == null) {
@@ -950,7 +952,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
     );
   }
 
-  // --- CORRECTION : La logique de sauvegarde met à jour l'état du dialogue ---
   Widget _buildFutureOutlineTab(Novel novel) {
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setDialogState) {
@@ -972,7 +973,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                         ),
                       )
                     : SelectableText(
-                        // On utilise le 'novel' passé en paramètre, qui est mis à jour par le Consumer parent
                         novel.futureOutline?.isNotEmpty == true
                             ? novel.futureOutline!
                             : "Aucun plan directeur (futur) n'a été défini ou généré.",
@@ -1003,8 +1003,6 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                       if (_isEditingOutline) {
                         _saveFutureOutline(novel).then((success) {
                            if (success && mounted) {
-                             // Pas besoin de recharger les données, le Consumer s'en charge.
-                             // On change juste le mode du dialogue.
                              setDialogState((){
                                _isEditingOutline = false;
                              });
@@ -1509,12 +1507,31 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         final novel = novels.firstWhereOrNull((n) => n.id == widget.novelId);
 
         if (novel == null) {
+          // ✅ Correction: Naviguer en arrière si le roman est supprimé/introuvable
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          });
           return Scaffold(
             backgroundColor: currentBackgroundColor,
-            appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.maybePop(context))),
-            body: const Center(child: Text("Ce roman n'a pas pu être chargé ou a été supprimé.")),
+            body: const Center(child: Text("Ce roman n'est plus disponible.")),
           );
         }
+
+        // ✅ Correction : S'assurer que _currentPage est toujours un index valide
+        if (_currentPage >= novel.chapters.length) {
+          AppLogger.warning("_currentPage ($_currentPage) est invalide après reconstruction. Ajustement à ${max(0, novel.chapters.length - 1)}", tag: "NovelReaderPage");
+          // Utiliser un post-frame callback pour éviter de modifier l'état pendant le build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _pageController.hasClients) {
+              final newPage = max(0, novel.chapters.length - 1);
+              _pageController.jumpToPage(newPage);
+              // Le listener _onPageChanged mettra à jour _currentPage
+            }
+          });
+        }
+
 
         Color navBarBgColor = theme.colorScheme.surfaceContainer;
         Color navBarPrimaryColor = theme.colorScheme.primary;

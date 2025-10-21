@@ -1,4 +1,4 @@
-// lib/providers.dart (AJOUT DU WRITER_MODE_PROVIDER)
+// lib/providers.dart (CORRIGÉ - Logique immuable pour la modification/suppression)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,10 +10,8 @@ import 'services/roadmap_service.dart';
 import 'services/sync_service.dart';
 import 'services/vocabulary_service.dart';
 
-// --- NOUVEAU PROVIDER ---
-/// Gère l'état du mode de lecture (Lecteur vs. Écrivain)
+// --- NOUVEAU : Provider pour le mode écrivain ---
 final writerModeProvider = StateProvider<bool>((ref) => false);
-// --- FIN DU NOUVEAU PROVIDER ---
 
 // --- Providers inchangés ---
 enum ServerStatus { connecting, connected, failed }
@@ -213,6 +211,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
   
+  // ✅ CORRIGÉ : Logique rendue immuable avec copyWith
   Future<void> addChapter(String novelId, Chapter newChapter) async {
     final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
@@ -220,10 +219,15 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     if (novelIndex == -1) return;
 
     final novelToUpdate = currentNovels[novelIndex];
-    novelToUpdate.addChapter(newChapter);
-    novelToUpdate.updatedAt = DateTime.now();
+    final updatedNovel = novelToUpdate.copyWith(
+      chapters: [...novelToUpdate.chapters, newChapter],
+      updatedAt: DateTime.now(),
+    );
 
-    state = AsyncValue.data([...currentNovels]);
+    final newNovelsList = List<Novel>.from(currentNovels);
+    newNovelsList[novelIndex] = updatedNovel;
+    
+    state = AsyncValue.data(newNovelsList);
 
     try {
         final chapterData = newChapter.toJson();
@@ -232,7 +236,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         await supabase.from('chapters').insert(chapterData);
         await supabase
             .from('novels')
-            .update({'updated_at': novelToUpdate.updatedAt.toIso8601String()})
+            .update({'updated_at': updatedNovel.updatedAt.toIso8601String()})
             .eq('id', novelId);
     } catch (e) {
         debugPrint("[NovelsProvider] Erreur lors de l'ajout du chapitre, rechargement...");
@@ -241,6 +245,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
 
+  // ✅ CORRIGÉ : Logique rendue immuable avec copyWith
   Future<void> updateChapter(String novelId, Chapter updatedChapter) async {
     final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
@@ -252,10 +257,18 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     final chapterIndex = novel.chapters.indexWhere((c) => c.id == updatedChapter.id);
     if (chapterIndex == -1) return;
 
-    novel.chapters[chapterIndex] = updatedChapter;
-    novel.updatedAt = DateTime.now();
+    final newChapters = List<Chapter>.from(novel.chapters);
+    newChapters[chapterIndex] = updatedChapter;
+    
+    final updatedNovel = novel.copyWith(
+        chapters: newChapters,
+        updatedAt: DateTime.now()
+    );
+    
+    final newNovelsList = List<Novel>.from(currentNovels);
+    newNovelsList[novelIndex] = updatedNovel;
 
-    state = AsyncValue.data([...currentNovels]);
+    state = AsyncValue.data(newNovelsList);
 
     try {
       await supabase
@@ -265,7 +278,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       
       await supabase
         .from('novels')
-        .update({'updated_at': novel.updatedAt.toIso8601String()})
+        .update({'updated_at': updatedNovel.updatedAt.toIso8601String()})
         .eq('id', novelId);
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la mise à jour du chapitre, rechargement...");
@@ -274,18 +287,26 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     }
   }
 
+  // ✅ CORRIGÉ : Logique rendue immuable avec copyWith
   Future<void> deleteChapter(String novelId, String chapterId) async {
     final supabase = ref.read(supabaseProvider);
     final currentNovels = state.value ?? [];
 
     final novelIndex = currentNovels.indexWhere((n) => n.id == novelId);
     if (novelIndex == -1) return;
-    final novel = currentNovels[novelIndex];
 
-    novel.chapters.removeWhere((c) => c.id == chapterId);
-    novel.updatedAt = DateTime.now();
+    final originalNovel = currentNovels[novelIndex];
+    final newChapters = originalNovel.chapters.where((c) => c.id != chapterId).toList();
+
+    final updatedNovel = originalNovel.copyWith(
+      chapters: newChapters,
+      updatedAt: DateTime.now(),
+    );
+
+    final newNovelsList = List<Novel>.from(currentNovels);
+    newNovelsList[novelIndex] = updatedNovel;
     
-    state = AsyncValue.data([...currentNovels]);
+    state = AsyncValue.data(newNovelsList);
 
     try {
       await supabase
@@ -295,7 +316,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
       
       await supabase
         .from('novels')
-        .update({'updated_at': novel.updatedAt.toIso8601String()})
+        .update({'updated_at': updatedNovel.updatedAt.toIso8601String()})
         .eq('id', novelId);
     } catch (e) {
       debugPrint("[NovelsProvider] Erreur lors de la suppression du chapitre, rechargement...");
