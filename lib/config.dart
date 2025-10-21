@@ -10,7 +10,7 @@ const String kDefaultModelId = 'qwen/qwen3-235b-a22b:free';
 final Map<String, Map<String, String>> kWritersMap = {
   'qwen/qwen3-235b-a22b:free': {
     'name': 'Qwen 3.5B (Recommandé)',
-    'description': 'Vous le verez penser et raisonner, ce qui peut prendre plus de temps. Le meilleur choix actuellement pour la qualité.',
+    'description': 'Vous le verez penser et raisonner (en anglais), ce qui peut prendre plus de temps. Le meilleur choix actuellement pour la qualité.',
   },
   'meta-llama/llama-3.3-70b-instruct:free': {
     'name': 'Llama (Phase de test)',

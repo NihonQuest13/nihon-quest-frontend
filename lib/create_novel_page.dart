@@ -1,8 +1,8 @@
-// lib/create_novel_page.dart (MODIFIÉ POUR CACHER LE PLAN FUTUR)
+// lib/create_novel_page.dart (CORRIGÉ - Erreur "Stream has already been listened to")
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:japanese_story_app/services/sync_service.dart';
+import 'package:japanese_story_app/services/sync_service.dart'; // Assurez-vous que le chemin est correct
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
@@ -72,12 +72,12 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
 
     await _handleNovelCreationFlow();
 
+    // S'assurer que le widget est toujours monté avant de modifier l'état
     if (mounted) {
       setState(() => _isLoading = false);
     }
   }
 
-  // ✅ CORRECTION : Logique entièrement revue pour enchaîner les dialogues de streaming.
   Future<void> _handleNovelCreationFlow() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
@@ -100,6 +100,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
 
     try {
       // --- Étape 1: Génération du Plan Directeur (Futur) ---
+      AppLogger.info("Début Étape 1: Génération Plan Directeur", tag: "CreateNovelPage");
       final String planPrompt = roadmapService.getPlanPrompt(
         title: novelDetails['title']!,
         userPreferences: novelDetails['specifications']!,
@@ -116,22 +117,27 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
       );
 
       if (!mounted) return;
-      // ✅ MODIFICATION : Changement du titre du dialogue
       final String? rawPlan = await _showStreamingDialog(
         context: context,
-        title: "Génération de la trame de l'histoire...", // Titre plus générique
+        title: "Génération de la trame de l'histoire...",
         stream: planStream,
+        showStreamContent: false, // Ne pas montrer le stream du plan
       );
 
       if (rawPlan == null) {
+        AppLogger.warning("Génération du plan annulée ou échouée (rawPlan is null).", tag: "CreateNovelPage");
         _showFeedback("Création annulée.", isError: false);
         return;
       }
       if (rawPlan.trim().isEmpty) {
+        AppLogger.error("La génération du plan a échoué (résultat vide).", tag: "CreateNovelPage");
         throw Exception("La génération de la trame a échoué (résultat vide).");
       }
+       AppLogger.success("Étape 1 terminée: Plan Directeur généré (longueur: ${rawPlan.length}).", tag: "CreateNovelPage");
 
-      // --- Étape 2: Création de l'objet Roman (avec le plan futur caché) ---
+
+      // --- Étape 2: Création de l'objet Roman ---
+       AppLogger.info("Début Étape 2: Création de l'objet Roman", tag: "CreateNovelPage");
       final String cleanedPlan = AIService.cleanAIResponse(rawPlan);
       final Novel newNovel = await roadmapService.createNovelFromPlan(
         userId: userId,
@@ -141,10 +147,13 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
         level: novelDetails['level']!,
         genre: novelDetails['genre']!,
         modelId: novelDetails['modelId']!,
-        generatedPlan: cleanedPlan, // Le plan est stocké mais ne sera pas montré
+        generatedPlan: cleanedPlan,
       );
+      AppLogger.success("Étape 2 terminée: Objet Novel créé (ID: ${newNovel.id}).", tag: "CreateNovelPage");
+
 
       // --- Étape 3: Génération du Chapitre 1 ---
+      AppLogger.info("Début Étape 3: Génération Chapitre 1", tag: "CreateNovelPage");
       final String chapter1Prompt = await AIService.preparePrompt(novel: newNovel, isFirstChapter: true);
       final Stream<String> chapter1Stream = AIService.streamChapterFromPrompt(
         prompt: chapter1Prompt,
@@ -157,32 +166,54 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
         context: context,
         title: "Génération du Chapitre 1...",
         stream: chapter1Stream,
+        showStreamContent: true, // Afficher le stream
       );
 
       if (chapter1FullText == null) {
+         AppLogger.warning("Génération du chapitre 1 annulée ou échouée (chapter1FullText is null).", tag: "CreateNovelPage");
         _showFeedback("Création annulée.", isError: false);
-        await ref.read(novelsProvider.notifier).deleteNovel(newNovel.id); // Nettoyage
+        try {
+           await ref.read(novelsProvider.notifier).deleteNovel(newNovel.id);
+           AppLogger.info("Nettoyage: Roman ${newNovel.id} supprimé.", tag: "CreateNovelPage");
+        } catch (deleteError) {
+           AppLogger.error("Erreur nettoyage roman ${newNovel.id}", error: deleteError, tag: "CreateNovelPage");
+        }
         return;
       }
       if (chapter1FullText.trim().isEmpty) {
+         AppLogger.error("Génération chapitre 1 échouée (vide).", tag: "CreateNovelPage");
+         try {
+           await ref.read(novelsProvider.notifier).deleteNovel(newNovel.id);
+            AppLogger.info("Nettoyage: Roman ${newNovel.id} supprimé.", tag: "CreateNovelPage");
+         } catch (deleteError) {
+             AppLogger.error("Erreur nettoyage roman ${newNovel.id}", error: deleteError, tag: "CreateNovelPage");
+         }
         throw Exception("La génération du chapitre 1 a échoué (résultat vide).");
       }
+      AppLogger.success("Étape 3 terminée: Chapitre 1 généré (longueur: ${chapter1FullText.length}).", tag: "CreateNovelPage");
+
 
       // --- Étape 4: Finalisation & Sauvegarde ---
+      AppLogger.info("Début Étape 4: Finalisation et Sauvegarde", tag: "CreateNovelPage");
       final Chapter firstChapter = AIService.extractTitleAndContent(
         chapter1FullText, 0, true, false, AIPrompts.getPromptsFor(newNovel.language),
       );
       await ref.read(novelsProvider.notifier).addChapter(newNovel.id, firstChapter);
+      AppLogger.info("Chapitre 1 ajouté via provider.", tag: "CreateNovelPage");
+
 
       final syncTask = SyncTask(action: 'add', novelId: newNovel.id, content: firstChapter.content, chapterIndex: 0);
       await syncService.addTask(syncTask);
+      AppLogger.info("Tâche synchro 'add' ajoutée.", tag: "CreateNovelPage");
+      AppLogger.success("Étape 4 terminée.", tag: "CreateNovelPage");
+
 
       // --- Étape 5: Navigation ---
+      AppLogger.info("Début Étape 5: Navigation", tag: "CreateNovelPage");
       if (!mounted) return;
       _showFeedback("Roman créé avec succès !", isError: false);
 
-      Navigator.of(context).pop(); // Quitte CreateNovelPage
-      Navigator.of(context).pushReplacement( // Remplace la page actuelle pour éviter un retour accidentel
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) => NovelReaderPage(
             novelId: newNovel.id,
@@ -191,106 +222,148 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
           ),
         ),
       );
+       AppLogger.success("Étape 5 terminée.", tag: "CreateNovelPage");
+
 
     } catch (e, stackTrace) {
-      AppLogger.error("Échec lors de la création du roman", error: e, stackTrace: stackTrace);
+      AppLogger.error("Échec global création roman", error: e, stackTrace: stackTrace, tag: "CreateNovelPage");
       if (mounted) {
         _showFeedback("Erreur lors de la création : ${e.toString()}", isError: true);
       }
+       if (mounted && _isLoading) {
+           setState(() => _isLoading = false);
+       }
     }
   }
 
-  // ✅ NOUVELLE FONCTION HELPER pour les dialogues de streaming
+  // ✅ CORRECTION : Gestion de l'écouteur unique
   Future<String?> _showStreamingDialog({
     required BuildContext context,
     required String title,
     required Stream<String> stream,
-  }) {
+    bool showStreamContent = false,
+  }) async {
     final completer = Completer<String?>();
+    final buffer = StringBuffer();
+    StreamSubscription? streamSubscription; // Seulement si showStreamContent = false
+    bool isCompleting = false; // Pour éviter double complétion
+
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Row( // Ajout d'un indicateur visuel
-            children: [
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
-              const SizedBox(width: 16),
-              Expanded(child: Text(title)),
-            ],
-          ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.8,
-            height: MediaQuery.of(context).size.height * 0.6,
-            // ✅ MODIFICATION : Le contenu du stream n'est PAS affiché ici
-            child: Center(
-              child: Text(
-                "L'écrivain prépare l'histoire...",
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ),
-            // child: SingleChildScrollView(
-            //   child: StreamingTextAnimation(
-            //     stream: stream,
-            //     onDone: (fullText) {
-            //       if (!completer.isCompleted) completer.complete(fullText);
-            //       if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
-            //     },
-            //     onError: (error) {
-            //       if (!completer.isCompleted) completer.completeError(error);
-            //       if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
-            //     },
-            //   ),
-            // ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                if (!completer.isCompleted) completer.complete(null); // Annulation utilisateur
-                if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
-              },
-              child: const Text("Annuler"),
-            )
-          ],
+        // --- Logique d'écoute conditionnelle ---
+        if (!showStreamContent) {
+          // Si on ne montre PAS le stream, on l'écoute ici pour accumuler le buffer
+           // S'assurer de ne pas ré-écouter si le dialogue se reconstruit
+           if (streamSubscription == null) {
+              streamSubscription = stream.listen(
+                (chunk) {
+                  buffer.write(chunk);
+                },
+                onDone: () {
+                  AppLogger.info("Stream (caché) terminé (onDone) pour '$title'", tag: "CreateNovelPage._showStreamingDialog");
+                  if (!isCompleting && !completer.isCompleted) {
+                    isCompleting = true;
+                    if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+                    completer.complete(buffer.toString());
+                  }
+                },
+                onError: (error, stack) {
+                  AppLogger.error("Erreur sur stream (caché) pour '$title'", error: error, stackTrace: stack, tag: "CreateNovelPage._showStreamingDialog");
+                  if (!isCompleting && !completer.isCompleted) {
+                    isCompleting = true;
+                    if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+                    completer.completeError(error);
+                  }
+                },
+                cancelOnError: true,
+              );
+           }
+        }
+        // Si showStreamContent est true, on NE LANCE PAS d'écouteur ici.
+        // StreamingTextAnimation le fera.
+
+        return PopScope(
+           canPop: false,
+           child: AlertDialog(
+             title: Row(
+               children: [
+                 const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                 const SizedBox(width: 16),
+                 Expanded(child: Text(title)),
+               ],
+             ),
+             content: SizedBox(
+               width: MediaQuery.of(context).size.width * 0.8,
+               height: MediaQuery.of(context).size.height * 0.6,
+               child: showStreamContent
+                 ? SingleChildScrollView(
+                     child: StreamingTextAnimation(
+                       // On passe le stream DIRECTEMENT
+                       stream: stream,
+                       style: Theme.of(context).textTheme.bodyMedium,
+                       // Les callbacks gèrent la complétion et la fermeture
+                       onDone: (fullText) {
+                         AppLogger.info("StreamingTextAnimation (montré) terminé (onDone) pour '$title'", tag: "CreateNovelPage._showStreamingDialog");
+                         if (!isCompleting && !completer.isCompleted) {
+                            isCompleting = true;
+                            // Pas besoin de fermer le dialogue ici, whenComplete le fera
+                            completer.complete(fullText);
+                         }
+                       },
+                       onError: (error) {
+                          AppLogger.error("Erreur StreamingTextAnimation (montré) pour '$title'", error: error, tag: "CreateNovelPage._showStreamingDialog");
+                          if (!isCompleting && !completer.isCompleted) {
+                            isCompleting = true;
+                            // Pas besoin de fermer le dialogue ici, whenComplete le fera
+                            completer.completeError(error);
+                          }
+                       },
+                     ),
+                   )
+                 : Center(
+                     child: Text(
+                       "L'écrivain prépare le fil rouge de l'histoire... \n(cette opération peut prendre quelques minutes)",
+                       style: Theme.of(context).textTheme.bodyMedium,
+                       textAlign: TextAlign.center,
+                     ),
+                   ),
+             ),
+             actions: [
+               TextButton(
+                 onPressed: () {
+                   AppLogger.warning("Annulation manuelle pour '$title'", tag: "CreateNovelPage._showStreamingDialog");
+                   // Annuler l'écouteur externe s'il existe
+                   streamSubscription?.cancel();
+                   if (!isCompleting && !completer.isCompleted) {
+                      isCompleting = true;
+                       if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+                      completer.complete(null); // Annulation
+                   }
+                 },
+                 child: const Text("Annuler"),
+               )
+             ],
+           ),
         );
       },
     );
 
-    // Écouter le stream en arrière-plan pendant que le dialogue "générique" est affiché
-    final streamSubscription = stream.listen(
-      (chunk) { /* Ne rien faire avec le chunk ici */ },
-      onDone: () {
-        // Le stream est terminé, mais on ne sait pas encore le contenu
-        // On suppose que AIService gère les erreurs de contenu vide
-      },
-      onError: (error) {
-        if (!completer.isCompleted) completer.completeError(error);
-      },
-      cancelOnError: true,
-    );
+    // Nettoyage après la complétion du Future (succès, erreur ou annulation)
+     completer.future.whenComplete(() {
+        streamSubscription?.cancel(); // Annuler l'écouteur externe si besoin
+         // Fermer le dialogue s'il est encore ouvert (sécurité)
+         if (Navigator.of(context).canPop()) {
+            Navigator.of(context).popUntil((route) => route is! DialogRoute);
+         }
+     });
 
-    // Gérer la complétion du dialogue (quand l'utilisateur annule ou que le stream finit)
-    completer.future.then((result) async {
-      await streamSubscription.cancel(); // Annuler l'écoute du stream
-      if (Navigator.of(context).canPop()) {
-         // Assurez-vous que le dialogue est toujours affiché avant de le fermer
-         // (peut avoir déjà été fermé par onError/onDone interne au dialogue)
-        Navigator.of(context).popUntil((route) => route is! DialogRoute);
-      }
-    }).catchError((error) async {
-       await streamSubscription.cancel();
-       if (Navigator.of(context).canPop()) {
-         Navigator.of(context).popUntil((route) => route is! DialogRoute);
-       }
-    });
-
-    // Retourner le futur qui complétera avec le texte complet ou null/erreur
     return completer.future;
   }
 
 
-  // ✅ NOUVELLE FONCTION HELPER pour les messages
+
   void _showFeedback(String message, {bool isError = true}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -302,6 +375,7 @@ class CreateNovelPageState extends ConsumerState<CreateNovelPage> {
     );
   }
 
+  // --- build() reste inchangé ---
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
