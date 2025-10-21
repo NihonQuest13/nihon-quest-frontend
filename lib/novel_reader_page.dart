@@ -191,27 +191,24 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
 
   void _attachScrollListenerToCurrentPage() {
-      // Détacher les listeners précédents
+      // Détacher les listeners précédents sur TOUS les contrôleurs de manière robuste
       for (var entry in _scrollControllers.entries) {
-          if (entry.value.hasListeners) {
-             try {
-                entry.value.removeListener(_updateScrollProgress);
-             } catch (e) {
-                AppLogger.warning("Listener non trouvé pour ScrollController ${entry.key} lors du détachement", tag: "NovelReaderPage");
-             }
+          // On tente de retirer le listener de manière robuste, car on ne peut pas vérifier hasListeners (propriété protégée)
+          try {
+             entry.value.removeListener(_updateScrollProgress);
+          } catch (e) {
+             // Ignorer les erreurs si le listener n'était pas là (pas de log, c'est l'état normal)
           }
       }
 
       final controller = _scrollControllers[_currentPage];
-      if (controller != null && controller.hasClients && !controller.hasListeners) {
+      if (controller != null && controller.hasClients) {
+          // Re-ajouter le listener pour le contrôleur actuel (il sera le seul)
           controller.addListener(_updateScrollProgress);
+          
           // Mettre à jour immédiatement après l'attachement
           WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollProgress());
-          AppLogger.info("Listener attaché au ScrollController pour la page $_currentPage.", tag: "NovelReaderPage");
-      } else if (controller != null && controller.hasClients && controller.hasListeners) {
-          // Si le listener est déjà là (peut arriver avec Hot Reload), juste mettre à jour
-          WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollProgress());
-          AppLogger.info("Listener déjà présent pour la page $_currentPage. Mise à jour du progrès.", tag: "NovelReaderPage");
+          AppLogger.info("Listener attaché au ScrollController pour la page $_currentPage. (via attachement forcé)", tag: "NovelReaderPage");
       }
        else {
           // Aucun controller ou pas prêt
@@ -407,6 +404,49 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
       color: _getCurrentTextColor(),
       height: 1.6, // Interligne
     );
+  }
+
+  // ✅ NOUVELLE FONCTION: Réinitialiser la position de lecture
+  Future<void> _clearLastViewedPageAndScroll() async {
+    if (!_prefsLoaded || !mounted) return;
+    
+    final novel = await _getNovelFromProvider();
+    if (novel == null) return;
+
+    try {
+      // 1. Supprime la dernière page vue
+      final pageKey = 'last_page_${widget.novelId}';
+      await _prefs.remove(pageKey);
+      AppLogger.info("Dernière page vue réinitialisée pour ${widget.novelId}.", tag: "NovelReaderPage");
+
+      // 2. Supprime la position de scroll pour tous les chapitres existants
+      for (int i = 0; i < novel.chapters.length; i++) {
+        final scrollKey = 'scroll_pos_${widget.novelId}_$i';
+        await _prefs.remove(scrollKey);
+        AppLogger.info("Position scroll réinitialisée pour chap $i.", tag: "NovelReaderPage");
+      }
+
+      // 3. Réinitialise l'état local et la navigation
+      if (mounted) {
+         // Si l'index actuel n'est pas 0 et qu'il y a des chapitres
+         if (novel.chapters.isNotEmpty) {
+           setState(() {
+             _currentPage = 0; // Définit la page à 0
+           });
+           if (_pageController.hasClients) {
+              // Aller à la page 0
+              _pageController.jumpToPage(0);
+              // Ré-attacher le listener de scroll pour relancer la lecture du scroll (qui sera 0)
+              _attachScrollListenerToCurrentPage();
+           }
+         }
+         _showSnackbarMessage('Position de lecture réinitialisée. Retour au Chapitre 1.', Colors.orange);
+      }
+    } catch (e) {
+       AppLogger.error("Erreur réinitialisation position de lecture", error: e, tag: "NovelReaderPage");
+       // ❌ CORRECTION: Retrait de 'isError: true' qui n'est pas dans la signature de _showSnackbarMessage
+       _showSnackbarMessage("Échec de la réinitialisation de la position de lecture.", Colors.redAccent); 
+    }
   }
 
   void _startEditing(Novel novel) {
@@ -1259,19 +1299,22 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
 
     // S'assurer que le listener est attaché/détaché correctement lors du build
      if (index == _currentPage) {
-        // Si c'est la page actuelle et qu'il n'y a pas de listener, l'attacher
-        if (controller.hasClients && !controller.hasListeners) {
-           AppLogger.info("Ré-attachement listener scroll page $index pendant build", tag: "NovelReaderPage");
+        // Le listener est géré par _attachScrollListenerToCurrentPage, mais on s'assure
+        // qu'il est là si PageView le détache.
+        if (controller.hasClients) {
+           // Tente de retirer de manière robuste (même si le listener n'est pas là)
+           try { controller.removeListener(_updateScrollProgress); } catch (_) {} 
+           // Ré-ajoute le listener
            controller.addListener(_updateScrollProgress);
            // Mettre à jour la progression après l'attachement
            WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollProgress());
         }
      } else {
-        // Si ce n'est pas la page actuelle et qu'il y a un listener, le détacher
-         if (controller.hasListeners) {
+        // Si ce n'est pas la page actuelle, le détacher si nécessaire
+        // On ne peut pas utiliser hasListeners (protégé), donc on tente de le retirer si hasClients est vrai.
+         if (controller.hasClients) { 
            try {
               controller.removeListener(_updateScrollProgress);
-               AppLogger.info("Détachement listener page non-actuelle $index pendant build", tag: "NovelReaderPage");
            } catch (e) { /* Ignorer si déjà détaché */ }
          }
      }
@@ -1816,7 +1859,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
         // ✅ MODIFICATION: Actions possibles seulement si propriétaire ET conditions remplies
         final bool canDeleteChapter = isOwner && novel.chapters.isNotEmpty && !isGenerating && isCurrentPageValid;
         final bool canEditChapter = isOwner && novel.chapters.isNotEmpty && !isGenerating && isCurrentPageValid;
-        final bool canGenerateChapter = isOwner && !isGenerating; // Simplifié
+        // ❌ SUPPRESSION: Variable inutile
+        // final bool canGenerateChapter = isOwner && !isGenerating; // Simplifié
 
         // Afficher la zone de traduction ?
         final bool shouldShowTranslationArea = _selectedWord.isNotEmpty && (_isLoadingTranslation || _translationResult != null);
@@ -1911,6 +1955,8 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                     case 'font_size': _showFontSizeDialog(); break;
                                     case 'theme': ref.read(themeServiceProvider.notifier).updateTheme(isDarkMode ? ThemeMode.light : ThemeMode.dark); break;
                                     case 'delete': _deleteCurrentChapter(novel); break; // _deleteCurrentChapter a déjà la vérif isOwner
+                                    // ✅ NOUVELLE ACTION
+                                    case 'reset_position': _clearLastViewedPageAndScroll(); break;
                                   }
                                 },
                                 // Construire les items du menu
@@ -1939,6 +1985,16 @@ class NovelReaderPageState extends ConsumerState<NovelReaderPage> {
                                   PopupMenuItem<String>(
                                     value: 'theme',
                                     child: ListTile(leading: Icon(isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined), title: Text(isDarkMode ? 'Thème clair' : 'Thème sombre')),
+                                  ),
+                                  
+                                  const PopupMenuDivider(),
+                                  // ✅ NOUVEAU BOUTON
+                                  const PopupMenuItem<String>(
+                                    value: 'reset_position',
+                                    child: ListTile(
+                                      leading: Icon(Icons.refresh_outlined),
+                                      title: Text('Réinitialiser la position de lecture')
+                                    ),
                                   ),
                                   // ✅ CONDITION: Afficher seulement si propriétaire
                                   if (isOwner) ...[

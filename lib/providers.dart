@@ -185,11 +185,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         }
       }).whereType<Novel>().toList(); // Filtrer les nulls
 
-      // ✅ SÉCURITÉ : Assurer le tri des chapitres APRÈS le chargement complet, au cas où Supabase ou fromJson échouerait.
-      for (var novel in novels) {
-        novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      }
-
       AppLogger.info("${novels.length} romans récupérés et parsés.", tag: "NovelsProvider");
 
       // Appliquer le tri des ROMANS côté client
@@ -249,8 +244,8 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     // Préparer les données pour Supabase
     final novelData = _novelToSupabaseJson(novel, currentUserId);
     final chaptersData = novel.chapters.map((chapter) {
-      // ✅ Assurer le tri avant de préparer les données chapitre
-      novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      // ✅ Assurer le tri avant de préparer les données chapitre (fait par Novel.fromJson)
+      // novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt)); // ❌ DÉSORMAIS FAIT VIA LE CONSTRUCTEUR/novelWithAddedChapter
       final chapterJson = chapter.toJson();
       chapterJson['novel_id'] = novel.id; // Lier le chapitre au roman
       return chapterJson;
@@ -260,8 +255,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
     state = await AsyncValue.guard(() async {
       final currentNovels = state.value ?? [];
       // Ajoute au début et re-trie les romans selon l'option actuelle
-      // ✅ Assurer le tri des chapitres DANS le novel ajouté
-      novel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       return _sortNovels([novel, ...currentNovels], ref.read(sortOptionProvider));
     });
 
@@ -286,9 +279,6 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
   Future<void> updateNovel(Novel updatedNovel) async {
     final currentUserId = _userId;
     if (currentUserId == null) throw Exception('Utilisateur non authentifié');
-
-    // ✅ Assurer le tri des chapitres avant sauvegarde et mise à jour état
-    updatedNovel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     final novelData = _novelToSupabaseJson(updatedNovel, currentUserId);
 
@@ -334,8 +324,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
          final originalNovel = currentNovels[novelIndex];
          // Utilise la méthode helper du modèle pour créer une nouvelle instance
          final updatedNovel = originalNovel.novelWithAddedChapter(newChapter);
-         // ✅ Forcer le tri des chapitres DANS la nouvelle instance
-         updatedNovel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+         // ✅ Forcer le tri des chapitres DANS la nouvelle instance (déjà fait par novelWithAddedChapter)
          updatedNovelState = updatedNovel; // Sauvegarde pour la màj Supabase de updated_at
 
          final newList = List<Novel>.from(currentNovels);
@@ -380,8 +369,7 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
         final originalNovel = currentNovels[novelIndex];
         // Utilise la méthode helper du modèle
         final updatedNovel = originalNovel.novelWithUpdatedChapter(updatedChapter);
-        // ✅ Forcer le tri des chapitres DANS la nouvelle instance
-        updatedNovel.chapters.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        // ✅ Forcer le tri des chapitres DANS la nouvelle instance (déjà fait par novelWithUpdatedChapter)
         updatedNovelState = updatedNovel;
 
         final newList = List<Novel>.from(currentNovels);
@@ -473,6 +461,99 @@ class NovelsNotifier extends AsyncNotifier<List<Novel>> {
        }
     }
   }
+  
+  // ✅ NOUVELLE FONCTION: Réorganiser les chapitres
+  Future<void> reorderChapters(String novelId, List<String> chapterIdsInNewOrder) async {
+    final currentUserId = _userId;
+    if (currentUserId == null) throw Exception('Utilisateur non authentifié');
+
+    // 1. Récupérer l'état actuel du roman et les détails des chapitres
+    final originalNovels = state.value;
+    final originalNovel = originalNovels?.firstWhereOrNull((n) => n.id == novelId);
+    if (originalNovel == null) throw Exception("Roman non trouvé pour réorganiser les chapitres.");
+
+    final chaptersMap = {for (var c in originalNovel.chapters) c.id: c};
+    
+    Novel? updatedNovelState;
+
+    // 2. Mise à jour optimiste de l'état local
+    state = await AsyncValue.guard(() async {
+      final currentNovels = state.value ?? [];
+      final novelIndex = currentNovels.indexWhere((n) => n.id == novelId);
+      
+      if (novelIndex != -1) {
+        // Le roman à cet index est l'originalNovel, mais on utilise le map local pour plus de clarté.
+        
+        // Crée une nouvelle liste de chapitres dans l'ordre spécifié
+        final List<Chapter> reorderedChapters = chapterIdsInNewOrder
+            .map((id) => chaptersMap[id])
+            .whereType<Chapter>()
+            .toList();
+
+        // Crée un Novel mis à jour, en s'assurant que les métadonnées sont à jour
+        final updatedNovel = originalNovel.copyWith(
+          chapters: List.unmodifiable(reorderedChapters), // Nouvelle liste triée
+          updatedAt: DateTime.now(),
+        );
+
+        updatedNovelState = updatedNovel; // Sauvegarde de l'état pour la BDD
+        
+        // Applique la mise à jour à la liste principale des romans
+        final newList = List<Novel>.from(currentNovels);
+        newList[novelIndex] = updatedNovel;
+        return _sortNovels(newList, ref.read(sortOptionProvider));
+      }
+      return currentNovels;
+    });
+
+    // 3. Mise à jour de la base de données (mise à jour des created_at)
+    if (updatedNovelState != null) {
+      try {
+        final List<Map<String, dynamic>> updates = [];
+        final now = DateTime.now().millisecondsSinceEpoch;
+        
+        // Mettre à jour le created_at de chaque chapitre pour refléter le nouvel ordre
+        for (int i = 0; i < chapterIdsInNewOrder.length; i++) {
+          final chapterId = chapterIdsInNewOrder[i];
+          final originalChapter = chaptersMap[chapterId]; 
+          
+          if (originalChapter == null) {
+              AppLogger.warning("Chapitre ID $chapterId non trouvé pour la réorganisation. Ignoré.", tag: "NovelsProvider");
+              continue;
+          }
+
+          updates.add({
+            'id': chapterId,
+            'novel_id': novelId, 
+            // ✅ CORRECTION: Inclure les champs NOT NULL manquants (title et content)
+            'title': originalChapter.title, 
+            'content': originalChapter.content, 
+            // La colonne "created_at" est mise à jour pour forcer le tri BDD
+            'created_at': DateTime.fromMillisecondsSinceEpoch(now + (i * 1000)).toIso8601String(),
+          });
+        }
+        
+        // L'upsert mettra à jour les lignes existantes ou échouera si l'ID n'est pas trouvé
+        await _supabase.from('chapters').upsert(updates);
+
+        // Mettre à jour 'updated_at' du roman parent
+        await _supabase.from('novels')
+            .update({'updated_at': updatedNovelState!.updatedAt.toIso8601String()})
+            .eq('id', novelId);
+            
+        AppLogger.info("Chapitres du roman $novelId réorganisés avec succès via created_at.", tag: "NovelsProvider");
+      } catch (e) {
+        AppLogger.error("Erreur lors de la réorganisation des chapitres Supabase.", error: e, tag: "NovelsProvider");
+        ref.invalidateSelf(); // Reviens à l'état de la BDD
+        throw Exception("Erreur Supabase lors de la réorganisation : $e");
+      }
+    } else {
+        AppLogger.error("Erreur reorderChapters: Roman $novelId non trouvé.", tag: "NovelsProvider");
+        ref.invalidateSelf();
+        throw Exception("Roman non trouvé pour réorganiser les chapitres.");
+    }
+  }
+
 
   // Supprimer un roman entier
   Future<void> deleteNovel(String novelId) async {

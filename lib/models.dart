@@ -1,11 +1,12 @@
 // lib/models.dart
-import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+import 'package:japanese_story_app/utils/app_logger.dart'; // ✅ AJOUT: Importer AppLogger
 
 const uuid = Uuid();
 
 // ================== MODÈLE VOCABULAIRE ==================
 class VocabularyEntry {
+  // ... (code inchangé) ...
   final String word;
   final String reading;
   final String translation;
@@ -51,8 +52,8 @@ class VocabularyEntry {
 }
 
 // ================== MODÈLE RÉSUMÉ CHAPITRE ==================
-// (Inchangé par rapport à votre version précédente)
 class ChapterSummary {
+ // ... (code inchangé) ...
   final int endChapterIndex;
   final String summaryText;
   final DateTime createdAt;
@@ -90,6 +91,7 @@ class ChapterSummary {
 
 // ================== MODÈLE CHAPITRE ==================
 class Chapter {
+ // ... (code inchangé) ...
   final String id;
   final String title;
   final String content;
@@ -122,6 +124,9 @@ class Chapter {
      // Utilise 'created_at' pour correspondre au JSON de Supabase et au nom de colonne SQL
      final createdAt = parseDateTime(json['created_at'], DateTime.now());
 
+     // ✅ AJOUT LOG: Afficher l'ID et la date parsée
+     AppLogger.info("Parsing Chapter ID: ${json['id']}, Raw created_at: ${json['created_at']}, Parsed DateTime: ${createdAt.toIso8601String()}", tag: "Chapter.fromJson");
+
     return Chapter(
       id: json['id']?.toString() ?? uuid.v4(),
       title: json['title'] ?? 'Titre chapitre inconnu',
@@ -134,13 +139,14 @@ class Chapter {
 
 // ================== MODÈLE ROMAN ==================
 class Novel {
+  // ... (propriétés inchangées) ...
   final String id;
   final String user_id; // UUID du propriétaire
   String title;
   String level;
   String genre;
   String specifications;
-  final List<Chapter> chapters;
+  final List<Chapter> chapters; // Rendre mutable temporairement pour tri facile ? Non, copyWith gère ça.
   final List<ChapterSummary> summaries;
   final DateTime createdAt;
   DateTime updatedAt;
@@ -151,6 +157,7 @@ class Novel {
   String? modelId;
   String? futureOutline;
   bool isDynamicOutline;
+
 
   Novel({
     String? id,
@@ -171,10 +178,12 @@ class Novel {
     this.futureOutline,
     this.isDynamicOutline = true,
   }) : id = id ?? uuid.v4(),
-       chapters = chapters ?? [],
-       summaries = summaries ?? [],
+       // CORRECTION: Garantir l'immutabilité dès la construction
+       chapters = List.unmodifiable(chapters ?? []), 
+       summaries = List.unmodifiable(summaries ?? []),
        updatedAt = updatedAt ?? createdAt;
 
+  // --- copyWith (inchangé) ---
   Novel copyWith({
     String? id,
     String? user_id,
@@ -187,7 +196,6 @@ class Novel {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? language,
-    // Utiliser Object? pour permettre de mettre à null explicitement
     Object? coverImagePath = const _SentinelValue(),
     Object? roadMap = const _SentinelValue(),
     Object? previousRoadMap = const _SentinelValue(),
@@ -202,8 +210,8 @@ class Novel {
       level: level ?? this.level,
       genre: genre ?? this.genre,
       specifications: specifications ?? this.specifications,
-      chapters: chapters ?? List.unmodifiable(this.chapters), // Copie immuable
-      summaries: summaries ?? List.unmodifiable(this.summaries), // Copie immuable
+      chapters: chapters ?? List.unmodifiable(this.chapters),
+      summaries: summaries ?? List.unmodifiable(this.summaries),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       language: language ?? this.language,
@@ -216,15 +224,24 @@ class Novel {
     );
   }
 
-  // --- Fonctions utilitaires (ne modifient plus l'état directement) ---
-  Novel novelWithAddedChapter(Chapter chapter) {
+
+  // --- Fonctions utilitaires (inchangées) ---
+   Novel novelWithAddedChapter(Chapter chapter) {
+    // Retourne une NOUVELLE instance de Novel avec le chapitre ajouté et trié
+    final newChapters = List<Chapter>.from(chapters)..add(chapter);
+    newChapters.sort((a, b) {
+      int dateCompare = a.createdAt.compareTo(b.createdAt);
+      if (dateCompare != 0) return dateCompare;
+      return a.id.compareTo(b.id); // Tri secondaire par ID si dates identiques
+    });
     return copyWith(
-      chapters: [...chapters, chapter],
+      chapters: newChapters,
       updatedAt: DateTime.now(),
     );
   }
 
   Novel novelWithAddedSummary(ChapterSummary summary) {
+     // ... (logique inchangée) ...
      final updatedSummaries = summaries.where((s) => s.endChapterIndex != summary.endChapterIndex).toList()
        ..add(summary)
        ..sort((a, b) => a.endChapterIndex.compareTo(b.endChapterIndex));
@@ -235,24 +252,33 @@ class Novel {
   }
 
   Novel novelWithRemovedChapter(String chapterId) {
+     // Retourne une NOUVELLE instance de Novel sans le chapitre
+     final newChapters = chapters.where((c) => c.id != chapterId).toList();
+     // Le tri n'est pas nécessaire car l'ordre relatif est préservé
      return copyWith(
-       chapters: chapters.where((c) => c.id != chapterId).toList(),
+       chapters: newChapters,
        updatedAt: DateTime.now(),
      );
   }
 
    Novel novelWithUpdatedChapter(Chapter updatedChapter) {
+     // Retourne une NOUVELLE instance de Novel avec le chapitre mis à jour et la liste retriée
      final chapterIndex = chapters.indexWhere((c) => c.id == updatedChapter.id);
-     if (chapterIndex == -1) return this; // Ne change rien si non trouvé
+     if (chapterIndex == -1) return this;
      final newChapters = List<Chapter>.from(chapters);
      newChapters[chapterIndex] = updatedChapter;
+     newChapters.sort((a, b) {
+        int dateCompare = a.createdAt.compareTo(b.createdAt);
+        if (dateCompare != 0) return dateCompare;
+        return a.id.compareTo(b.id); // Tri secondaire par ID
+     });
      return copyWith(
        chapters: newChapters,
        updatedAt: DateTime.now(),
      );
    }
 
-  // --- Conversion JSON ---
+  // --- Conversion JSON (inchangée pour toJson et toJsonForIsolate) ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -261,7 +287,6 @@ class Novel {
       'level': level,
       'genre': genre,
       'specifications': specifications,
-      // 'summaries': summaries.map((summary) => summary.toJson()).toList(), // Pas stocké dans la table novels
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'language': language,
@@ -270,45 +295,63 @@ class Novel {
       'model_id': modelId,
       'future_outline': futureOutline,
       'is_dynamic_outline': isDynamicOutline,
-      // Ne pas inclure 'chapters' ici, ils sont dans leur propre table
     };
   }
 
-  // Pour l'isolate ou la sérialisation complète (moins fréquent avec Supabase)
   Map<String, dynamic> toJsonForIsolate() {
     final data = toJson();
     data['chapters'] = chapters.map((c) => c.toJson()).toList();
-    data['summaries'] = summaries.map((s) => s.toJson()).toList(); // Si summaries est utilisé
+    data['summaries'] = summaries.map((s) => s.toJson()).toList();
     return data;
   }
 
   factory Novel.fromJson(Map<String, dynamic> json) {
     var chapterList = <Chapter>[];
     if (json['chapters'] != null && json['chapters'] is List) {
-      // Tente de parser chaque élément, ignore ceux qui échouent
+      AppLogger.info("Parsing ${ (json['chapters'] as List).length} chapters for Novel ID: ${json['id']}", tag: "Novel.fromJson");
       chapterList = (json['chapters'] as List).map((chapterJson) {
         try {
           return Chapter.fromJson(chapterJson as Map<String, dynamic>);
         } catch (e) {
-          debugPrint("Erreur parsing chapitre: $e - Data: $chapterJson");
-          return null; // Retourne null en cas d'erreur
+          // ❌ CORRECTION : Intégrer chapterJson au message
+          AppLogger.error("Erreur parsing chapitre. Data: $chapterJson", error: e, tag: "Novel.fromJson");
+          return null; // Ignore les romans qui ne peuvent pas être parsés
         }
-      }).whereType<Chapter>().toList(); // Filtre les nulls
+      }).whereType<Chapter>().toList();
+
+      // ✅ MODIFICATION: Tri explicite ici avec critère secondaire
+      chapterList.sort((a, b) {
+        int dateCompare = a.createdAt.compareTo(b.createdAt);
+        if (dateCompare != 0) return dateCompare;
+        // Si les dates sont identiques, trier par ID (qui est unique)
+        return a.id.compareTo(b.id);
+      });
+
+       // ✅ AJOUT LOG: Afficher l'ordre après tri
+      final sortedIds = chapterList.map((c) => c.id.substring(0, 4)).join(', ');
+      AppLogger.info("Chapter IDs after sorting in fromJson: [$sortedIds]", tag: "Novel.fromJson");
+
+    } else {
+       AppLogger.info("No 'chapters' array found or invalid format for Novel ID: ${json['id']}", tag: "Novel.fromJson");
     }
 
-    var summaryList = <ChapterSummary>[]; // Gérer summaries si présent
+    var summaryList = <ChapterSummary>[];
+    // ... (parsing summaries inchangé) ...
     if (json['summaries'] != null && json['summaries'] is List) {
        summaryList = (json['summaries'] as List).map((summaryJson) {
          try {
              return ChapterSummary.fromJson(summaryJson as Map<String, dynamic>);
          } catch (e) {
-             debugPrint("Erreur parsing summary: $e - Data: $summaryJson");
+             // ❌ CORRECTION : Intégrer summaryJson au message
+             AppLogger.error("Erreur parsing summary. Data: $summaryJson", error: e, tag: "Novel.fromJson");
              return null;
          }
        }).whereType<ChapterSummary>().toList();
        summaryList.sort((a, b) => a.endChapterIndex.compareTo(b.endChapterIndex));
     }
 
+
+    // ... (parsing dates et autres champs inchangé) ...
     DateTime parseDateTime(dynamic dateString, DateTime fallback) {
        if (dateString is String) {
           return DateTime.tryParse(dateString)?.toLocal() ?? fallback;
@@ -322,18 +365,18 @@ class Novel {
 
     final userId = json['user_id']?.toString();
     if (userId == null) {
-      debugPrint("ALERTE: Roman ${json['id']} chargé sans user_id !");
+      AppLogger.warning("Novel ${json['id']} chargé sans user_id !", tag: "Novel.fromJson");
     }
 
     return Novel(
       id: json['id']?.toString() ?? uuid.v4(),
-      user_id: userId ?? '00000000-0000-0000-0000-000000000000', // Placeholder
+      user_id: userId ?? '00000000-0000-0000-0000-000000000000',
       title: json['title']?.toString() ?? 'Titre inconnu',
       level: json['level']?.toString() ?? 'N3',
       genre: json['genre']?.toString() ?? 'Fantasy',
       specifications: json['specifications']?.toString() ?? '',
-      chapters: chapterList..sort((a,b) => a.createdAt.compareTo(b.createdAt)), // Assure le tri des chapitres
-      summaries: summaryList, // Inclure summaries
+      chapters: chapterList, // Utilise la liste triée
+      summaries: summaryList,
       createdAt: createdAt,
       updatedAt: updatedAt,
       language: json['language']?.toString() ?? 'Japonais',
@@ -346,11 +389,12 @@ class Novel {
   }
 }
 
-// Classe interne pour copyWith
+// Classe interne pour copyWith (inchangée)
 class _SentinelValue { const _SentinelValue(); }
 
 
 // ================== MODÈLES POUR LES AMIS ==================
+// ... (code inchangé) ...
 enum FriendshipStatus { pending, accepted, blocked, unknown }
 
 class FriendProfile {
@@ -404,6 +448,7 @@ class Friendship {
 
 // ================== MODÈLE POUR COLLABORATEURS (Partage) ==================
 class CollaboratorInfo {
+  // ... (code inchangé) ...
   final String userId;
   final String displayName; // Nom complet ou email
   final String role;

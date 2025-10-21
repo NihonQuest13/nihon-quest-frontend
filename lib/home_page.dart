@@ -76,7 +76,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     final isDarkMode = ref.watch(themeServiceProvider) == ThemeMode.dark; // État du thème
     final serverStatus = ref.watch(serverStatusProvider); // État du backend
     // Compte des demandes d'amis en attente pour le badge
-    final pendingRequestsCount = ref.watch(pendingFriendRequestsProvider).when(
+    final pendingRequestsAsync = ref.watch(pendingFriendRequestsProvider);
+    final pendingRequestsCount = pendingRequestsAsync.when(
           data: (requests) => requests.length,
           loading: () => 0, // Pas de badge pendant le chargement
           error: (e, s) => 0, // Pas de badge en cas d'erreur
@@ -163,7 +164,114 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  // ==================== MÉTHODES DE CONSTRUCTION UI ====================
+  // ==================== NOUVELLE FONCTION DE RÉORGANISATION ====================
+
+  void _showReorderChaptersDialog(BuildContext context, Novel novel) {
+    // ⚠️ Crée une copie modifiable des chapitres pour le glisser-déposer local
+    List<Chapter> localChapters = List.from(novel.chapters);
+    bool isSaving = false;
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            final theme = Theme.of(context);
+            
+            // Si le roman n'a pas de chapitres, on ne fait rien
+            if (localChapters.isEmpty) {
+              return AlertDialog(
+                title: const Text('Réorganisation des chapitres'),
+                content: const Text('Ce roman ne contient pas encore de chapitres à réorganiser.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Fermer'))
+                ],
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('Réorganiser les chapitres'),
+              contentPadding: const EdgeInsets.fromLTRB(0, 20.0, 0, 0),
+              content: SizedBox(
+                width: 500,
+                height: 400,
+                child: ReorderableListView(
+                  // Le titre et le bouton Fermer ne font pas partie de la liste
+                  header: Padding(
+                    padding: const EdgeInsets.only(left: 24.0, right: 24.0, bottom: 8.0),
+                    child: Text(
+                      'Faites glisser les chapitres pour changer leur ordre.',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+                    ),
+                  ),
+                  onReorder: (int oldIndex, int newIndex) {
+                    if (isSaving) return; // Ne rien faire pendant la sauvegarde
+
+                    setStateDialog(() {
+                      if (newIndex > oldIndex) {
+                        newIndex -= 1;
+                      }
+                      final Chapter item = localChapters.removeAt(oldIndex);
+                      localChapters.insert(newIndex, item);
+                    });
+                  },
+                  children: <Widget>[
+                    for (int index = 0; index < localChapters.length; index += 1)
+                      ListTile(
+                        key: ValueKey(localChapters[index].id), // Clé requise pour ReorderableListView
+                        tileColor: index % 2 == 0 ? theme.colorScheme.surfaceContainer : theme.colorScheme.surface,
+                        title: Text('Chapitre ${index + 1}: ${localChapters[index].title}', overflow: TextOverflow.ellipsis),
+                        subtitle: Text(localChapters[index].createdAt.toLocal().toString().substring(0, 16)),
+                        trailing: const Icon(Icons.drag_handle), // Icône de glisser-déposer
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving ? null : () async {
+                    setStateDialog(() => isSaving = true);
+                    final currentContext = context; // Capture le contexte pour le Snackbar
+                    Navigator.pop(dialogContext); // Ferme le dialogue immédiatement
+
+                    try {
+                      // 1. Appel du notifier pour la réorganisation
+                      await ref.read(novelsProvider.notifier).reorderChapters(novel.id, localChapters.map((c) => c.id).toList());
+                      
+                      // 2. Afficher la confirmation
+                      if (currentContext.mounted) {
+                        ScaffoldMessenger.of(currentContext).showSnackBar(
+                          const SnackBar(content: Text('Ordre des chapitres sauvegardé !'), backgroundColor: Colors.green)
+                        );
+                      }
+                    } catch (e) {
+                       AppLogger.error("Erreur lors de la réorganisation des chapitres", error: e, tag: "HomePage");
+                       if (currentContext.mounted) {
+                        ScaffoldMessenger.of(currentContext).showSnackBar(
+                          SnackBar(content: Text('Erreur: Impossible de sauvegarder l\'ordre. ${e.toString()}'), backgroundColor: Colors.redAccent)
+                        );
+                      }
+                    }
+                    // Le set state ne se fait pas ici car on a pop le dialogue.
+                    // L'état de l'application est mis à jour par le ref.read().reorderChapters.
+                  },
+                  child: isSaving
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Sauvegarder l\'ordre'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==================== MÉTHODES DE CONSTRUCTION UI (INCHANGÉES) ====================
 
   // Construit les icônes à gauche de l'AppBar (Statut Backend, Synchro)
   Widget _buildLeadingActions(ServerStatus serverStatus) {
@@ -443,7 +551,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                            _buildHelpTabContent( /* À propos */
                              context, icon: Icons.info_outline, title: "À propos de l'IA", spans: const [ /* ... texte ... */
                                TextSpan(text: "Qualité & Limites : ", style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: "Les modèles IA sont des outils puissants mais imparfaits. Ils peuvent générer des répétitions, des incohérences ou oublier des détails malgré les systèmes de mémoire. Votre rôle d'éditeur est essentiel pour peaufiner le résultat.\n\n"),
-                               TextSpan(text: "Coûts & Utilisation : ", style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: "L'utilisation des modèles IA a un coût (calcul, énergie). Les modèles marqués ':free' sont généralement moins chers ou gratuits dans certaines limites via des services comme OpenRouter, mais peuvent être plus lents ou sujets à des quotas.\n\n"),
+                               TextSpan(text: "Coûts & Utilisation : ", style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: "L'utilisation des modèles IA a un coût (calcul, énergie). Les modèles marqués ':free' sont généralement moins chers ou gratuits dans certaines limites via des services comme OpenRouter, but peuvent être plus lents ou sujets à des quotas.\n\n"),
                                TextSpan(text: "Confidentialité : ", style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: "Vos romans sont stockés dans votre compte Supabase. Le contenu envoyé aux API d'IA (OpenRouter, etc.) transite par leurs serveurs. Consultez leurs politiques de confidentialité pour plus de détails. Le backend local FAISS fonctionne entièrement sur votre machine."),
                              ],
                           ),
@@ -606,6 +714,17 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
                     // L'invalidation du novelsProvider rafraîchira si nécessaire
                   },
                 ),
+                // ✅ NOUVELLE OPTION DE RÉORGANISATION
+                if (widget.novel.chapters.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.swap_vert_outlined),
+                    title: const Text('Réorganiser les chapitres'),
+                    onTap: () {
+                      Navigator.pop(sheetContext); // Ferme le sheet
+                      // Appelle la fonction pour ouvrir le dialogue de glisser-déposer
+                      (_manageCoverState()._showReorderChaptersDialog(currentContext, widget.novel));
+                    },
+                  ),
                 ListTile(
                   leading: const Icon(Icons.image_search_outlined), // Icône plus pertinente
                   title: Text(widget.novel.coverImagePath != null ? 'Changer la couverture' : 'Ajouter une couverture'),
@@ -665,6 +784,12 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
     );
   }
 
+  // Helper pour accéder à l'état parent
+  _HomePageState _manageCoverState() {
+     // Nécessaire pour appeler _showReorderChaptersDialog qui est dans _HomePageState
+     return context.findAncestorStateOfType<_HomePageState>()!;
+  }
+
   // --- Fonctions d'action du menu ---
 
   // Placeholder pour l'ajout/modification de couverture
@@ -685,7 +810,7 @@ class _NovelCoverItemState extends ConsumerState<_NovelCoverItem> {
 
   // Dialogue de confirmation avant suppression du roman
    Future<void> _confirmAndDeleteNovel(BuildContext sheetContext, String novelTitle, String novelId) async {
-      // Capture les contextes nécessaires avant l'await
+      // Capture les contextes nécessaires avant les opérations
       final currentNavContext = Navigator.of(sheetContext);
       final parentScaffoldMessenger = ScaffoldMessenger.of(context);
       final currentRef = ref;
